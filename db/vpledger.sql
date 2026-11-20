@@ -1,5 +1,5 @@
 --
--- File generated with Letos v4.0.4 on Fri Nov 20 16:24:24 2026
+-- File generated with Letos v4.0.4 on Fri Nov 20 16:36:39 2026
 --
 -- Text encoding used: UTF-8
 --
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS "vpl_settings" (db_version TEXT, instance_name TEXT, 
 
 -- Table: vpl_users
 DROP TABLE IF EXISTS vpl_users;
-CREATE TABLE IF NOT EXISTS "vpl_users" (id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, username TEXT UNIQUE, firstname TEXT, lastname TEXT, displayname TEXT, is_admin INTEGER);
+CREATE TABLE IF NOT EXISTS "vpl_users" (id INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, username TEXT UNIQUE, firstname TEXT, lastname TEXT, displayname TEXT, is_admin INTEGER, password TEXT);
 
 COMMIT TRANSACTION;
 PRAGMA foreign_keys = on;
