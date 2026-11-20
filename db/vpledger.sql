@@ -1,5 +1,5 @@
 --
--- File generated with Letos v4.0.4 on Fri Nov 20 16:36:39 2026
+-- File generated with Letos v4.0.4 on Fri Nov 20 16:47:45 2026
 --
 -- Text encoding used: UTF-8
 --
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS vpl_plugins (id INTEGER PRIMARY KEY AUTOINCREMENT, na
 
 -- Table: vpl_settings
 DROP TABLE IF EXISTS vpl_settings;
-CREATE TABLE IF NOT EXISTS "vpl_settings" (db_version TEXT, instance_name TEXT, lang TEXT, default_currency INTEGER REFERENCES vpl_currencies (id), demo_mode INTEGER);
+CREATE TABLE IF NOT EXISTS "vpl_settings" (db_version TEXT, instance_name TEXT, lang TEXT, default_currency INTEGER REFERENCES vpl_currencies (id), demo_mode INTEGER, theme TEXT);
 
 -- Table: vpl_users
 DROP TABLE IF EXISTS vpl_users;
