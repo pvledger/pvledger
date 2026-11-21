@@ -1,5 +1,5 @@
 --
--- File generated with Letos v4.0.4 on Sat Nov 21 13:12:49 2026
+-- File generated with Letos v4.0.4 on Sat Nov 21 13:48:03 2026
 --
 -- Text encoding used: UTF-8
 --
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS "pvl_expenses" (id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 -- Table: pvl_expenses_categories
 DROP TABLE IF EXISTS pvl_expenses_categories;
-CREATE TABLE IF NOT EXISTS "pvl_expenses_categories" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id));
+CREATE TABLE IF NOT EXISTS "pvl_expenses_categories" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT);
 
 -- Table: pvl_expenses_planed
 DROP TABLE IF EXISTS pvl_expenses_planed;
