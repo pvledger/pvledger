@@ -1,7 +1,7 @@
 --
--- File generated with Letos v4.0.4 on Sat Nov 21 13:48:03 2026
---
--- Text encoding used: UTF-8
+-- PVLedger SQLite schema regenerated from pvledger_database_spec.json
+-- Specification version: 0.2-draft
+-- WARNING: This script DROPS existing tables and their data.
 --
 PRAGMA foreign_keys = off;
 BEGIN TRANSACTION;
@@ -40,15 +40,15 @@ CREATE TABLE IF NOT EXISTS "pvl_debts" (id INTEGER PRIMARY KEY AUTOINCREMENT, na
 
 -- Table: pvl_expenses
 DROP TABLE IF EXISTS pvl_expenses;
-CREATE TABLE IF NOT EXISTS "pvl_expenses" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, date NUMERIC, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id), id_currency INTEGER REFERENCES pvl_currencies (id));
+CREATE TABLE IF NOT EXISTS "pvl_expenses" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, date INTEGER, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id), id_currency INTEGER REFERENCES pvl_currencies (id));
 
 -- Table: pvl_expenses_categories
 DROP TABLE IF EXISTS pvl_expenses_categories;
 CREATE TABLE IF NOT EXISTS "pvl_expenses_categories" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT);
 
--- Table: pvl_expenses_planed
-DROP TABLE IF EXISTS pvl_expenses_planed;
-CREATE TABLE IF NOT EXISTS "pvl_expenses_planed" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, description TEXT, date INTEGER, status INTEGER, id_currency INTEGER REFERENCES pvl_currencies (id));
+-- Table: pvl_expenses_planned
+DROP TABLE IF EXISTS pvl_expenses_planned;
+CREATE TABLE IF NOT EXISTS "pvl_expenses_planned" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, description TEXT, date INTEGER, status INTEGER, id_currency INTEGER REFERENCES pvl_currencies (id));
 
 -- Table: pvl_expenses_recurring
 DROP TABLE IF EXISTS pvl_expenses_recurring;

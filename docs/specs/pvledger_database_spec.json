@@ -1,0 +1,2191 @@
+{
+  "title": "PVLedger database specification — draft, portable schema contract",
+  "specification_version": "0.2-draft",
+  "status": "Draft: structural baseline verified against SQLite; user-defined design choices recorded; business descriptions remain editable",
+  "source_file": "pvledger.sql",
+  "source_dialect": "SQLite",
+  "table_prefix": "pvl_",
+  "scope": "Target database design and original-source provenance, tables, keys, relationships, user-approved datatype/storage decisions, dialect portability, and unresolved business semantics; no data included",
+  "database_description": "Proposed: personal-finance application storage for users, banking accounts, expenses, debts, taxes, reference data, and settings.",
+  "tables": [
+    {
+      "name": "pvl_access_rights",
+      "description": "Placeholder catalog for future application access-control rights; no access-control relationships are implemented in this schema.",
+      "description_status": "placeholder confirmed by user; fuller definition pending",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Identifier of an access-right record.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Access-right name or label.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "description",
+          "description": "Optional explanation of the access right.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_access_rights\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)",
+      "additional_notes": [
+        "This table is a placeholder; do not infer users, roles, permissions assignments, or FK relationships yet."
+      ],
+      "source_name": "pvl_access_rights",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_access_rights\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)"
+    },
+    {
+      "name": "pvl_accounts_credit",
+      "description": "Credit-account records, associated optionally with a bank, user, current account, and currency.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Credit-account identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_bank",
+          "description": "Associated bank, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_banks",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_user",
+          "description": "Associated application user, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_users",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Credit-account display name.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "description",
+          "description": "Optional notes about the credit account.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "interest",
+          "description": "Interest value; unit and convention not defined.",
+          "description_status": "inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL"
+        },
+        {
+          "name": "billing_date",
+          "description": "Unix timestamp for credit-account billing date or event; exact business meaning pending.",
+          "description_status": "storage format confirmed by user; business meaning inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "unix_timestamp",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "unit": "seconds",
+            "epoch": "1970-01-01T00:00:00Z",
+            "timezone": "UTC",
+            "unit_status": "draft convention (confirm if milliseconds required)"
+          }
+        },
+        {
+          "name": "amount",
+          "description": "Monetary amount related to the account; whether balance or limit is not defined.",
+          "description_status": "inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL"
+        },
+        {
+          "name": "id_current_account",
+          "description": "Optionally linked current account.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_accounts_current",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_currency",
+          "description": "Account currency, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_currencies",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_currency"
+          ],
+          "referenced_table": "pvl_currencies",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        },
+        {
+          "columns": [
+            "id_current_account"
+          ],
+          "referenced_table": "pvl_accounts_current",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        },
+        {
+          "columns": [
+            "id_user"
+          ],
+          "referenced_table": "pvl_users",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        },
+        {
+          "columns": [
+            "id_bank"
+          ],
+          "referenced_table": "pvl_banks",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_accounts_credit\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), id_user INTEGER REFERENCES pvl_users (id), name TEXT NOT NULL, description TEXT, interest REAL, billing_date INTEGER, amount REAL, id_current_account INTEGER REFERENCES pvl_accounts_current (id), id_currency INTEGER REFERENCES pvl_currencies (id))",
+      "additional_notes": [],
+      "source_name": "pvl_accounts_credit",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_accounts_credit\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), id_user INTEGER REFERENCES pvl_users (id), name TEXT NOT NULL, description TEXT, interest REAL, billing_date INTEGER, amount REAL, id_current_account INTEGER REFERENCES pvl_accounts_current (id), id_currency INTEGER REFERENCES pvl_currencies (id))"
+    },
+    {
+      "name": "pvl_accounts_current",
+      "description": "Current or checking account records, optionally associated with a bank, user, and currency.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Current-account identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_bank",
+          "description": "Associated bank, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_banks",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Current-account display name.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "amount",
+          "description": "Account amount or balance; precise interpretation not documented.",
+          "description_status": "inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL"
+        },
+        {
+          "name": "description",
+          "description": "Optional notes about the current account.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "id_user",
+          "description": "Associated application user, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_users",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_currency",
+          "description": "Account currency, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_currencies",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_currency"
+          ],
+          "referenced_table": "pvl_currencies",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        },
+        {
+          "columns": [
+            "id_user"
+          ],
+          "referenced_table": "pvl_users",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        },
+        {
+          "columns": [
+            "id_bank"
+          ],
+          "referenced_table": "pvl_banks",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_accounts_current\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), name TEXT NOT NULL, amount REAL, description TEXT, id_user INTEGER REFERENCES pvl_users (id), id_currency INTEGER REFERENCES pvl_currencies (id))",
+      "additional_notes": [],
+      "source_name": "pvl_accounts_current",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_accounts_current\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), name TEXT NOT NULL, amount REAL, description TEXT, id_user INTEGER REFERENCES pvl_users (id), id_currency INTEGER REFERENCES pvl_currencies (id))"
+    },
+    {
+      "name": "pvl_accounts_savings",
+      "description": "Savings-account records with optional interest, billing date, ownership, and currency details.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Savings-account identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_bank",
+          "description": "Associated bank, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_banks",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "interest",
+          "description": "Interest value; annual/monthly basis and unit not defined.",
+          "description_status": "inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL"
+        },
+        {
+          "name": "billing_date",
+          "description": "Unix timestamp for savings-account billing or interest date; exact business meaning pending.",
+          "description_status": "storage format confirmed by user; business meaning inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "unix_timestamp",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "unit": "seconds",
+            "epoch": "1970-01-01T00:00:00Z",
+            "timezone": "UTC",
+            "unit_status": "draft convention (confirm if milliseconds required)"
+          }
+        },
+        {
+          "name": "name",
+          "description": "Savings-account display name.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "description",
+          "description": "Optional notes about the savings account.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "id_user",
+          "description": "Associated application user, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_users",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "amount",
+          "description": "Account amount or balance; precise interpretation not documented.",
+          "description_status": "inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL"
+        },
+        {
+          "name": "id_currency",
+          "description": "Account currency, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_currencies",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_currency"
+          ],
+          "referenced_table": "pvl_currencies",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        },
+        {
+          "columns": [
+            "id_user"
+          ],
+          "referenced_table": "pvl_users",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        },
+        {
+          "columns": [
+            "id_bank"
+          ],
+          "referenced_table": "pvl_banks",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_accounts_savings\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), interest REAL, billing_date INTEGER, name TEXT NOT NULL, description TEXT, id_user INTEGER REFERENCES pvl_users (id), amount REAL, id_currency INTEGER REFERENCES pvl_currencies (id))",
+      "additional_notes": [],
+      "source_name": "pvl_accounts_savings",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_accounts_savings\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), interest REAL, billing_date INTEGER, name TEXT NOT NULL, description TEXT, id_user INTEGER REFERENCES pvl_users (id), amount REAL, id_currency INTEGER REFERENCES pvl_currencies (id))"
+    },
+    {
+      "name": "pvl_banks",
+      "description": "Bank reference records optionally associated with a country.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Bank identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Bank name.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "description",
+          "description": "Optional bank description.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "id_countries",
+          "description": "Country linked to the bank, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_countries",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_countries"
+          ],
+          "referenced_table": "pvl_countries",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_banks\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_countries INTEGER REFERENCES pvl_countries (id))",
+      "additional_notes": [],
+      "source_name": "pvl_banks",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_banks\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_countries INTEGER REFERENCES pvl_countries (id))"
+    },
+    {
+      "name": "pvl_countries",
+      "description": "Country reference records with a required ISO-related code.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Country identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Country name, if provided.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "iso",
+          "description": "Country ISO code; standard and code length not specified.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_countries\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, iso TEXT NOT NULL)",
+      "additional_notes": [],
+      "source_name": "pvl_countries",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_countries\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, iso TEXT NOT NULL)"
+    },
+    {
+      "name": "pvl_currencies",
+      "description": "Currency reference records used by accounts, expenses, and settings.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Currency identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Currency name.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "description",
+          "description": "Optional currency description.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_currencies\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)",
+      "additional_notes": [],
+      "source_name": "pvl_currencies",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_currencies\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)"
+    },
+    {
+      "name": "pvl_debts",
+      "description": "Debt entries linked to a required current account.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Debt-entry identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Debt label or title.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "amount",
+          "description": "Debt amount; currency is not stored directly here.",
+          "description_status": "inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL"
+        },
+        {
+          "name": "description",
+          "description": "Optional debt notes.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "id_account",
+          "description": "Current account to which this debt is linked (required).",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_accounts_current",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "date",
+          "description": "Unix timestamp of the debt-related date or event.",
+          "description_status": "storage format confirmed by user; business meaning inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "unix_timestamp",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "unit": "seconds",
+            "epoch": "1970-01-01T00:00:00Z",
+            "timezone": "UTC",
+            "unit_status": "draft convention (confirm if milliseconds required)"
+          }
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_account"
+          ],
+          "referenced_table": "pvl_accounts_current",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_debts\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, amount REAL, description TEXT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, date INTEGER)",
+      "additional_notes": [],
+      "source_name": "pvl_debts",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_debts\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, amount REAL, description TEXT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, date INTEGER)"
+    },
+    {
+      "name": "pvl_expenses",
+      "description": "Expense transactions with optional account, category, and currency associations.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Expense identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_account",
+          "description": "Associated current account, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_accounts_current",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "amount",
+          "description": "Expense amount; source uses floating-point REAL.",
+          "description_status": "inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL"
+        },
+        {
+          "name": "name",
+          "description": "Expense title or label.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "date",
+          "description": "Unix timestamp of the expense date or event.",
+          "description_status": "storage format confirmed by user; business meaning inferred",
+          "source_declared_type": "NUMERIC",
+          "logical_type": "unix_timestamp",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "unit": "seconds",
+            "epoch": "1970-01-01T00:00:00Z",
+            "timezone": "UTC",
+            "unit_status": "draft convention (confirm if milliseconds required)"
+          }
+        },
+        {
+          "name": "description",
+          "description": "Optional expense details.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "id_category",
+          "description": "Expense category, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_expenses_categories",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_currency",
+          "description": "Expense currency, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_currencies",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_currency"
+          ],
+          "referenced_table": "pvl_currencies",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        },
+        {
+          "columns": [
+            "id_category"
+          ],
+          "referenced_table": "pvl_expenses_categories",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        },
+        {
+          "columns": [
+            "id_account"
+          ],
+          "referenced_table": "pvl_accounts_current",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_expenses\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, date NUMERIC, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id), id_currency INTEGER REFERENCES pvl_currencies (id))",
+      "additional_notes": [],
+      "source_name": "pvl_expenses",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, date INTEGER, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id), id_currency INTEGER REFERENCES pvl_currencies (id))"
+    },
+    {
+      "name": "pvl_expenses_categories",
+      "description": "Reference catalog of categories for ordinary and recurring expenses.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Expense-category identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Category name.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "description",
+          "description": "Optional category details.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_expenses_categories\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)",
+      "additional_notes": [],
+      "source_name": "pvl_expenses_categories",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses_categories\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)"
+    },
+    {
+      "name": "pvl_expenses_planned",
+      "description": "Planned expense records with optional account and currency links and an integer status marker.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Planned-expense identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_account",
+          "description": "Associated current account, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_accounts_current",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "amount",
+          "description": "Expected or planned amount.",
+          "description_status": "inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL"
+        },
+        {
+          "name": "name",
+          "description": "Planned-expense title.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "description",
+          "description": "Optional planning notes.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "date",
+          "description": "Unix timestamp of the scheduled planned expense date.",
+          "description_status": "storage format confirmed by user; business meaning inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "unix_timestamp",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "unit": "seconds",
+            "epoch": "1970-01-01T00:00:00Z",
+            "timezone": "UTC",
+            "unit_status": "draft convention (confirm if milliseconds required)"
+          }
+        },
+        {
+          "name": "status",
+          "description": "Application-defined integer status code for planned expenses; meanings of values such as 1, 2 and 3 are defined in application logic.",
+          "description_status": "integer-code storage confirmed; meanings unresolved",
+          "source_declared_type": "INTEGER",
+          "logical_type": "application_defined_integer_code",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "sample_values": [
+              1,
+              2,
+              3
+            ],
+            "allowed_values": null,
+            "meaning_defined_in": "application",
+            "database_check_constraint": false
+          }
+        },
+        {
+          "name": "id_currency",
+          "description": "Currency for the planned expense, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_currencies",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_currency"
+          ],
+          "referenced_table": "pvl_currencies",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        },
+        {
+          "columns": [
+            "id_account"
+          ],
+          "referenced_table": "pvl_accounts_current",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_expenses_planed\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, description TEXT, date INTEGER, status INTEGER, id_currency INTEGER REFERENCES pvl_currencies (id))",
+      "additional_notes": [
+        "Corrected table spelling: source table is pvl_expenses_planed; target table is pvl_expenses_planned. SQLite migration: ALTER TABLE pvl_expenses_planed RENAME TO pvl_expenses_planned."
+      ],
+      "source_name": "pvl_expenses_planed",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses_planned\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, description TEXT, date INTEGER, status INTEGER, id_currency INTEGER REFERENCES pvl_currencies (id))"
+    },
+    {
+      "name": "pvl_expenses_recurring",
+      "description": "Recurring expense definitions or entries; no explicit frequency rule is present in the schema.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Recurring-expense identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Recurring-expense title.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "description",
+          "description": "Optional recurring-expense notes.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "id_category",
+          "description": "Expense category, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_expenses_categories",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_account",
+          "description": "Associated current account, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_accounts_current",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "amount",
+          "description": "Recurring amount, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL"
+        },
+        {
+          "name": "date",
+          "description": "Unix timestamp for the recurring-expense date; recurrence frequency is not defined in this table.",
+          "description_status": "storage format confirmed by user; business meaning inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "unix_timestamp",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "unit": "seconds",
+            "epoch": "1970-01-01T00:00:00Z",
+            "timezone": "UTC",
+            "unit_status": "draft convention (confirm if milliseconds required)"
+          }
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_account"
+          ],
+          "referenced_table": "pvl_accounts_current",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        },
+        {
+          "columns": [
+            "id_category"
+          ],
+          "referenced_table": "pvl_expenses_categories",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_expenses_recurring\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id), id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, date INTEGER)",
+      "additional_notes": [],
+      "source_name": "pvl_expenses_recurring",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses_recurring\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id), id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, date INTEGER)"
+    },
+    {
+      "name": "pvl_plugins",
+      "description": "Plugin registry with optional names, enabled flags, and filesystem paths.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Plugin identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Plugin name, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "enabled",
+          "description": "Application-defined integer state code for a plugin; not constrained to a SQL BOOLEAN.",
+          "description_status": "integer-code storage confirmed; meanings unresolved",
+          "source_declared_type": "INTEGER",
+          "logical_type": "application_defined_integer_code",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "sample_values": [
+              1,
+              2,
+              3
+            ],
+            "allowed_values": null,
+            "meaning_defined_in": "application",
+            "database_check_constraint": false
+          }
+        },
+        {
+          "name": "path",
+          "description": "Plugin path or location, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE pvl_plugins (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, enabled INTEGER, path TEXT)",
+      "additional_notes": [],
+      "source_name": "pvl_plugins",
+      "target_create_sql_sqlite": "CREATE TABLE pvl_plugins (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, enabled INTEGER, path TEXT)"
+    },
+    {
+      "name": "pvl_settings",
+      "description": "Application or instance settings, including default currency and interface configuration.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Settings-row identifier; no singleton constraint exists.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "db_version",
+          "description": "Database version string.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "instance_name",
+          "description": "Application instance name.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "lang",
+          "description": "Language or locale identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "default_currency",
+          "description": "Reference to default currency, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_currencies",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "demo_mode",
+          "description": "Application-defined integer state code for demo mode; not constrained to a SQL BOOLEAN.",
+          "description_status": "integer-code storage confirmed; meanings unresolved",
+          "source_declared_type": "INTEGER",
+          "logical_type": "application_defined_integer_code",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "sample_values": [
+              1,
+              2,
+              3
+            ],
+            "allowed_values": null,
+            "meaning_defined_in": "application",
+            "database_check_constraint": false
+          }
+        },
+        {
+          "name": "theme",
+          "description": "Application display theme.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "default_currency"
+          ],
+          "referenced_table": "pvl_currencies",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_settings\" (id INTEGER PRIMARY KEY, db_version TEXT, instance_name TEXT, lang TEXT, default_currency INTEGER REFERENCES pvl_currencies (id), demo_mode INTEGER, theme TEXT)",
+      "additional_notes": [],
+      "source_name": "pvl_settings",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_settings\" (id INTEGER PRIMARY KEY, db_version TEXT, instance_name TEXT, lang TEXT, default_currency INTEGER REFERENCES pvl_currencies (id), demo_mode INTEGER, theme TEXT)"
+    },
+    {
+      "name": "pvl_taxes",
+      "description": "Tax records optionally associated with a current account.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Tax-entry identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_account",
+          "description": "Associated current account, if recorded.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_accounts_current",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Tax name or label.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "amount",
+          "description": "Tax amount.",
+          "description_status": "inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL"
+        },
+        {
+          "name": "description",
+          "description": "Optional tax details.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "date",
+          "description": "Unix timestamp of the tax-related date or event.",
+          "description_status": "storage format confirmed by user; business meaning inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "unix_timestamp",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "unit": "seconds",
+            "epoch": "1970-01-01T00:00:00Z",
+            "timezone": "UTC",
+            "unit_status": "draft convention (confirm if milliseconds required)"
+          }
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_account"
+          ],
+          "referenced_table": "pvl_accounts_current",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_taxes\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), name TEXT, amount REAL, description TEXT, date INTEGER)",
+      "additional_notes": [],
+      "source_name": "pvl_taxes",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_taxes\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), name TEXT, amount REAL, description TEXT, date INTEGER)"
+    },
+    {
+      "name": "pvl_users",
+      "description": "Application user records, including display information and authentication-related fields.",
+      "description_status": "inferred; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "User identifier.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "username",
+          "description": "Unique login name when non-null (the source permits null).",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": true,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "firstname",
+          "description": "Given name.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "lastname",
+          "description": "Family name.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "displayname",
+          "description": "Preferred display name.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "is_admin",
+          "description": "Application-defined integer state code associated with administration; permissions semantics are defined in the application.",
+          "description_status": "integer-code storage confirmed; meanings unresolved",
+          "source_declared_type": "INTEGER",
+          "logical_type": "application_defined_integer_code",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "sample_values": [
+              1,
+              2,
+              3
+            ],
+            "allowed_values": null,
+            "meaning_defined_in": "application",
+            "database_check_constraint": false
+          }
+        },
+        {
+          "name": "password",
+          "description": "MD5 password digest represented as 32 hexadecimal characters; existing nullable TEXT column retained.",
+          "description_status": "confirmed by user (security warning applies)",
+          "source_declared_type": "TEXT",
+          "logical_type": "md5_hex_digest",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT",
+          "value_semantics": {
+            "algorithm": "MD5",
+            "representation": "32 hexadecimal characters",
+            "salt_or_preprocessing": "not specified"
+          }
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [
+        {
+          "name": null,
+          "columns": [
+            "username"
+          ]
+        }
+      ],
+      "foreign_keys": [],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_users\" (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, firstname TEXT, lastname TEXT, displayname TEXT, is_admin INTEGER, password TEXT)",
+      "additional_notes": [],
+      "source_name": "pvl_users",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_users\" (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, firstname TEXT, lastname TEXT, displayname TEXT, is_admin INTEGER, password TEXT)"
+    }
+  ],
+  "assumptions_and_open_questions": [
+    "Confirm/replace inferred functional descriptions and define interest, balances, amounts and billing-date business semantics.",
+    "Unix timestamps use integer seconds since the UTC epoch as the draft convention; confirm unit seconds versus milliseconds. All target date and billing_date columns are INTEGER.",
+    "Application-defined integer states (examples 1,2,3) have no enum map or SQL CHECK constraints yet; define their meanings in the application.",
+    "pvl_access_rights is a placeholder; future authorization table relationships remain undecided.",
+    "The target table pvl_expenses_planned corrects the original pvl_expenses_planed; decide how to migrate any existing database, views, and application queries.",
+    "Password storage is user-specified as MD5 hashes. MD5 is unsuitable for secure password storage; prefer Argon2id/scrypt/bcrypt for new deployments and plan a migration.",
+    "Decide whether to migrate financial REAL fields to fixed-precision DECIMAL/NUMERIC(p,s).",
+    "Define username size, case sensitivity and NULL behavior; source unique rule permits NULL.",
+    "Decide whether pvl_settings should be a singleton; source allows multiple rows.",
+    "Define country ISO standard, currency identifiers and any uniqueness constraints.",
+    "Define recurrence rules for pvl_expenses_recurring (frequency/next-run logic not in database).",
+    "Define FK on-update/on-delete behavior if default NO ACTION is not desired.",
+    "Decide indexes for referencing FK columns and common access patterns."
+  ],
+  "cross_database_mapping": {
+    "sqlite": {
+      "INTEGER": "INTEGER (64-bit integer values supported)",
+      "TEXT": "TEXT",
+      "REAL": "REAL",
+      "NUMERIC": "Only found in original SQL for pvl_expenses.date; target is INTEGER",
+      "identity": "INTEGER PRIMARY KEY; AUTOINCREMENT where present in source",
+      "unix_timestamps": "INTEGER, epoch seconds in UTC",
+      "application_integer_codes": "INTEGER with values assigned and interpreted by application; no CHECK constraint",
+      "md5_password_digest": "TEXT (convention: 32 hexadecimal characters; no CHECK constraint)"
+    },
+    "postgresql": {
+      "INTEGER": "BIGINT to preserve the possible 64-bit integer range of SQLite",
+      "TEXT": "TEXT or validated VARCHAR(n)",
+      "REAL": "DOUBLE PRECISION",
+      "NUMERIC": "Not needed for the target timestamp columns",
+      "identity": "BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY except settings unless separately decided",
+      "unix_timestamps": "BIGINT, epoch seconds in UTC (do not implicitly convert to TIMESTAMP)",
+      "application_integer_codes": "INTEGER or BIGINT (consistent with selected range), not BOOLEAN",
+      "md5_password_digest": "TEXT or VARCHAR(32); MD5 is insecure for password storage"
+    },
+    "mysql_mariadb": {
+      "INTEGER": "BIGINT to preserve the possible 64-bit integer range of SQLite",
+      "TEXT": "TEXT; use suitable VARCHAR(n) for uniquely indexed username",
+      "REAL": "DOUBLE",
+      "NUMERIC": "Not needed for the target timestamp columns",
+      "identity": "BIGINT AUTO_INCREMENT PRIMARY KEY except settings unless separately decided",
+      "unix_timestamps": "BIGINT, epoch seconds in UTC (avoid implicit TIMESTAMP range/timezone conversions)",
+      "application_integer_codes": "INT or BIGINT, not BOOLEAN/TINYINT(1) shorthand",
+      "md5_password_digest": "VARCHAR(32) or TEXT; MD5 is insecure for password storage"
+    }
+  },
+  "revision": {
+    "from": "0.1-draft",
+    "date": "2026-11-21",
+    "changes": [
+      "All date and billing_date fields use 64-bit-compatible INTEGER Unix timestamps in the target schema (seconds since 1970-01-01T00:00:00Z used as the draft unit).",
+      "Application-defined integer codes, e.g. 1, 2, 3, are retained for status and state/flag fields; no DB-level enum or boolean coercion.",
+      "Access control remains a placeholder, without inferred relationships.",
+      "Corrected pvl_expenses_planed to pvl_expenses_planned in the target schema; source name retained for provenance and migrations.",
+      "pvl_users.password will contain an MD5 hash in hexadecimal form; security warning documented."
+    ]
+  },
+  "design_decisions": {
+    "date_storage": {
+      "logical_type": "unix_timestamp",
+      "target_sql_type": "INTEGER",
+      "unit": "seconds",
+      "epoch": "1970-01-01T00:00:00Z",
+      "timezone": "UTC",
+      "unit_status": "draft convention; confirm seconds rather than milliseconds if application differs",
+      "scope": "All date and billing_date columns",
+      "nullability": "Unchanged from source SQL",
+      "notes": "Unix timestamps represent instants in UTC. If billing_date is actually intended as a day of month rather than an instant, its business semantics will need separate review."
+    },
+    "state_code_storage": {
+      "logical_type": "application_defined_integer_code",
+      "target_sql_type": "INTEGER",
+      "columns": [
+        "pvl_expenses_planned.status",
+        "pvl_plugins.enabled",
+        "pvl_settings.demo_mode",
+        "pvl_users.is_admin"
+      ],
+      "sample_values": [
+        1,
+        2,
+        3
+      ],
+      "code_to_meaning_map": null,
+      "meaning_owner": "application",
+      "db_check_constraint": false,
+      "notes": "The source names may suggest booleans, but they are integer codes, not restricted to TRUE/FALSE or 0/1. Examples are not an exhaustive allowed-value list."
+    },
+    "access_control": {
+      "status": "placeholder",
+      "table": "pvl_access_rights",
+      "link_to_users": null,
+      "future_work": "Model authorization, roles and user associations later; do not add FKs now."
+    },
+    "naming": {
+      "renamed_tables": [
+        {
+          "source_name": "pvl_expenses_planed",
+          "target_name": "pvl_expenses_planned",
+          "reason": "Correct English spelling of planned"
+        }
+      ],
+      "other_identifier_names": "Retained as defined by source; id_countries is awkward grammar but not a spelling error, so no silent rename."
+    },
+    "password_storage": {
+      "table": "pvl_users",
+      "column": "password",
+      "algorithm": "MD5",
+      "representation": "32-character hexadecimal digest",
+      "target_sql_type": "TEXT",
+      "salt_or_preprocessing": "not specified",
+      "security_warning": "MD5 is unsuitable for password storage: it is fast and vulnerable to offline guessing. New systems should prefer Argon2id, scrypt or bcrypt; document a future migration path.",
+      "nullable": "Preserve nullable source column",
+      "database_length_constraint": false
+    }
+  }
+}
