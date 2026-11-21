@@ -1,79 +1,17 @@
 {
   "title": "PVLedger database specification — draft, portable schema contract",
-  "specification_version": "0.2-draft",
-  "status": "Draft: structural baseline verified against SQLite; user-defined design choices recorded; business descriptions remain editable",
-  "source_file": "pvledger.sql",
+  "specification_version": "0.5-draft",
+  "status": "Draft synchronized to pvledger(3).sql, including 430 seed rows and user-specified application semantics.",
+  "source_file": "pvledger(3).sql",
   "source_dialect": "SQLite",
   "table_prefix": "pvl_",
-  "scope": "Target database design and original-source provenance, tables, keys, relationships, user-approved datatype/storage decisions, dialect portability, and unresolved business semantics; no data included",
-  "database_description": "Proposed: personal-finance application storage for users, banking accounts, expenses, debts, taxes, reference data, and settings.",
+  "scope": "Current SQLite schema, seeded default reference data (full rows + stable IDs), user-specified behavioral rules, cross-engine mapping and editable descriptions.",
+  "database_description": "PVLedger personal-finance storage for accounts, expenses, taxes, debts, localized country and currency catalogs, user accounts, roles and singleton instance settings.",
   "tables": [
     {
-      "name": "pvl_access_rights",
-      "description": "Placeholder catalog for future application access-control rights; no access-control relationships are implemented in this schema.",
-      "description_status": "placeholder confirmed by user; fuller definition pending",
-      "columns": [
-        {
-          "name": "id",
-          "description": "Identifier of an access-right record.",
-          "description_status": "inferred",
-          "source_declared_type": "INTEGER",
-          "logical_type": "integer",
-          "nullable": false,
-          "primary_key": true,
-          "autoincrement_keyword": true,
-          "unique": false,
-          "default_sql": null,
-          "references": null,
-          "target_sqlite_type": "INTEGER"
-        },
-        {
-          "name": "name",
-          "description": "Access-right name or label.",
-          "description_status": "inferred",
-          "source_declared_type": "TEXT",
-          "logical_type": "text",
-          "nullable": false,
-          "primary_key": false,
-          "autoincrement_keyword": false,
-          "unique": false,
-          "default_sql": null,
-          "references": null,
-          "target_sqlite_type": "TEXT"
-        },
-        {
-          "name": "description",
-          "description": "Optional explanation of the access right.",
-          "description_status": "inferred",
-          "source_declared_type": "TEXT",
-          "logical_type": "text",
-          "nullable": true,
-          "primary_key": false,
-          "autoincrement_keyword": false,
-          "unique": false,
-          "default_sql": null,
-          "references": null,
-          "target_sqlite_type": "TEXT"
-        }
-      ],
-      "primary_key": [
-        "id"
-      ],
-      "unique_constraints": [],
-      "foreign_keys": [],
-      "check_constraints": [],
-      "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_access_rights\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)",
-      "additional_notes": [
-        "This table is a placeholder; do not infer users, roles, permissions assignments, or FK relationships yet."
-      ],
-      "source_name": "pvl_access_rights",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_access_rights\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)"
-    },
-    {
       "name": "pvl_accounts_credit",
-      "description": "Credit-account records, associated optionally with a bank, user, current account, and currency.",
-      "description_status": "inferred; editable",
+      "description": "Credit accounts; amount is the remaining debt (outstanding balance) owed on the credit account.",
+      "description_status": "user-specified semantics; editable",
       "columns": [
         {
           "name": "id",
@@ -91,11 +29,11 @@
         },
         {
           "name": "id_bank",
-          "description": "Associated bank, if recorded.",
+          "description": "Required bank reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -108,11 +46,11 @@
         },
         {
           "name": "id_user",
-          "description": "Associated application user, if recorded.",
+          "description": "Required associated user.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -187,8 +125,8 @@
         },
         {
           "name": "amount",
-          "description": "Monetary amount related to the account; whether balance or limit is not defined.",
-          "description_status": "inferred",
+          "description": "Remaining debt outstanding on this credit account; not the credit limit or original amount borrowed.",
+          "description_status": "user-specified",
           "source_declared_type": "REAL",
           "logical_type": "floating_point",
           "nullable": true,
@@ -201,11 +139,11 @@
         },
         {
           "name": "id_current_account",
-          "description": "Optionally linked current account.",
+          "description": "Required linked current account.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -218,11 +156,11 @@
         },
         {
           "name": "id_currency",
-          "description": "Account currency, if recorded.",
+          "description": "Required currency reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -250,7 +188,8 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         },
         {
           "columns": [
@@ -263,7 +202,8 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         },
         {
           "columns": [
@@ -276,7 +216,8 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         },
         {
           "columns": [
@@ -289,20 +230,21 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         }
       ],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_accounts_credit\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), id_user INTEGER REFERENCES pvl_users (id), name TEXT NOT NULL, description TEXT, interest REAL, billing_date INTEGER, amount REAL, id_current_account INTEGER REFERENCES pvl_accounts_current (id), id_currency INTEGER REFERENCES pvl_currencies (id))",
+      "source_create_sql": "CREATE TABLE \"pvl_accounts_credit\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id) NOT NULL, id_user INTEGER REFERENCES pvl_users (id) NOT NULL, name TEXT NOT NULL, description TEXT, interest REAL, billing_date INTEGER, amount REAL, id_current_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);",
       "additional_notes": [],
       "source_name": "pvl_accounts_credit",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_accounts_credit\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), id_user INTEGER REFERENCES pvl_users (id), name TEXT NOT NULL, description TEXT, interest REAL, billing_date INTEGER, amount REAL, id_current_account INTEGER REFERENCES pvl_accounts_current (id), id_currency INTEGER REFERENCES pvl_currencies (id))"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_accounts_credit\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id) NOT NULL, id_user INTEGER REFERENCES pvl_users (id) NOT NULL, name TEXT NOT NULL, description TEXT, interest REAL, billing_date INTEGER, amount REAL, id_current_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);"
     },
     {
       "name": "pvl_accounts_current",
-      "description": "Current or checking account records, optionally associated with a bank, user, and currency.",
-      "description_status": "inferred; editable",
+      "description": "Current/checking accounts; amount is the current amount of funds held in each account.",
+      "description_status": "user-specified semantics; editable",
       "columns": [
         {
           "name": "id",
@@ -320,11 +262,11 @@
         },
         {
           "name": "id_bank",
-          "description": "Associated bank, if recorded.",
+          "description": "Required bank reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -351,8 +293,8 @@
         },
         {
           "name": "amount",
-          "description": "Account amount or balance; precise interpretation not documented.",
-          "description_status": "inferred",
+          "description": "Current balance of funds in this checking/current account.",
+          "description_status": "user-specified",
           "source_declared_type": "REAL",
           "logical_type": "floating_point",
           "nullable": true,
@@ -379,11 +321,11 @@
         },
         {
           "name": "id_user",
-          "description": "Associated application user, if recorded.",
+          "description": "Required associated user.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -396,11 +338,11 @@
         },
         {
           "name": "id_currency",
-          "description": "Account currency, if recorded.",
+          "description": "Required currency reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -428,7 +370,8 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         },
         {
           "columns": [
@@ -441,7 +384,8 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         },
         {
           "columns": [
@@ -454,20 +398,21 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         }
       ],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_accounts_current\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), name TEXT NOT NULL, amount REAL, description TEXT, id_user INTEGER REFERENCES pvl_users (id), id_currency INTEGER REFERENCES pvl_currencies (id))",
+      "source_create_sql": "CREATE TABLE \"pvl_accounts_current\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id) NOT NULL, name TEXT NOT NULL, amount REAL, description TEXT, id_user INTEGER REFERENCES pvl_users (id) NOT NULL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);",
       "additional_notes": [],
       "source_name": "pvl_accounts_current",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_accounts_current\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), name TEXT NOT NULL, amount REAL, description TEXT, id_user INTEGER REFERENCES pvl_users (id), id_currency INTEGER REFERENCES pvl_currencies (id))"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_accounts_current\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id) NOT NULL, name TEXT NOT NULL, amount REAL, description TEXT, id_user INTEGER REFERENCES pvl_users (id) NOT NULL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);"
     },
     {
       "name": "pvl_accounts_savings",
-      "description": "Savings-account records with optional interest, billing date, ownership, and currency details.",
-      "description_status": "inferred; editable",
+      "description": "Savings accounts; amount is the current amount of funds held in each savings account.",
+      "description_status": "user-specified semantics; editable",
       "columns": [
         {
           "name": "id",
@@ -485,11 +430,11 @@
         },
         {
           "name": "id_bank",
-          "description": "Associated bank, if recorded.",
+          "description": "Required bank reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -564,11 +509,11 @@
         },
         {
           "name": "id_user",
-          "description": "Associated application user, if recorded.",
+          "description": "Required associated user.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -581,8 +526,8 @@
         },
         {
           "name": "amount",
-          "description": "Account amount or balance; precise interpretation not documented.",
-          "description_status": "inferred",
+          "description": "Current balance of funds in this savings account.",
+          "description_status": "user-specified",
           "source_declared_type": "REAL",
           "logical_type": "floating_point",
           "nullable": true,
@@ -595,11 +540,11 @@
         },
         {
           "name": "id_currency",
-          "description": "Account currency, if recorded.",
+          "description": "Required currency reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -627,7 +572,8 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         },
         {
           "columns": [
@@ -640,7 +586,8 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         },
         {
           "columns": [
@@ -653,19 +600,20 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         }
       ],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_accounts_savings\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), interest REAL, billing_date INTEGER, name TEXT NOT NULL, description TEXT, id_user INTEGER REFERENCES pvl_users (id), amount REAL, id_currency INTEGER REFERENCES pvl_currencies (id))",
+      "source_create_sql": "CREATE TABLE \"pvl_accounts_savings\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id) NOT NULL, interest REAL, billing_date INTEGER, name TEXT NOT NULL, description TEXT, id_user INTEGER REFERENCES pvl_users (id) NOT NULL, amount REAL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);",
       "additional_notes": [],
       "source_name": "pvl_accounts_savings",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_accounts_savings\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id), interest REAL, billing_date INTEGER, name TEXT NOT NULL, description TEXT, id_user INTEGER REFERENCES pvl_users (id), amount REAL, id_currency INTEGER REFERENCES pvl_currencies (id))"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_accounts_savings\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id) NOT NULL, interest REAL, billing_date INTEGER, name TEXT NOT NULL, description TEXT, id_user INTEGER REFERENCES pvl_users (id) NOT NULL, amount REAL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);"
     },
     {
       "name": "pvl_banks",
-      "description": "Bank reference records optionally associated with a country.",
+      "description": "Bank reference records, each assigned to a required country.",
       "description_status": "inferred; editable",
       "columns": [
         {
@@ -712,11 +660,11 @@
         },
         {
           "name": "id_countries",
-          "description": "Country linked to the bank, if recorded.",
+          "description": "Required bank-country reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -744,20 +692,21 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         }
       ],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_banks\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_countries INTEGER REFERENCES pvl_countries (id))",
+      "source_create_sql": "CREATE TABLE \"pvl_banks\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_countries INTEGER REFERENCES pvl_countries (id) NOT NULL);",
       "additional_notes": [],
       "source_name": "pvl_banks",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_banks\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_countries INTEGER REFERENCES pvl_countries (id))"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_banks\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_countries INTEGER REFERENCES pvl_countries (id) NOT NULL);"
     },
     {
       "name": "pvl_countries",
-      "description": "Country reference records with a required ISO-related code.",
-      "description_status": "inferred; editable",
+      "description": "ISO 3166-1 alpha-2 countries and territories with native/localized names; 249 default reference rows supplied in the SQL.",
+      "description_status": "source data + previous agreed design",
       "columns": [
         {
           "name": "id",
@@ -775,8 +724,8 @@
         },
         {
           "name": "name",
-          "description": "Country name, if provided.",
-          "description_status": "inferred",
+          "description": "Preferred country/territory name written in a locally used language; nullable column despite all 249 seed rows having names.",
+          "description_status": "user-specified",
           "source_declared_type": "TEXT",
           "logical_type": "text",
           "nullable": true,
@@ -789,8 +738,8 @@
         },
         {
           "name": "iso",
-          "description": "Country ISO code; standard and code length not specified.",
-          "description_status": "inferred",
+          "description": "ISO 3166-1 alpha-2 code (two-letter country/territory code); required, but no unique constraint is present.",
+          "description_status": "user-specified",
           "source_declared_type": "TEXT",
           "logical_type": "text",
           "nullable": false,
@@ -809,15 +758,1276 @@
       "foreign_keys": [],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_countries\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, iso TEXT NOT NULL)",
-      "additional_notes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_countries\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, iso TEXT NOT NULL);",
+      "additional_notes": [
+        "249 default rows with explicit IDs are embedded in pvledger(3).sql. Country ISO codes are not constrained UNIQUE by this schema."
+      ],
       "source_name": "pvl_countries",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_countries\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, iso TEXT NOT NULL)"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_countries\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, iso TEXT NOT NULL);",
+      "seed_data": {
+        "source": "pvledger(3).sql",
+        "kind": "default_reference_data",
+        "columns": [
+          "id",
+          "name",
+          "iso"
+        ],
+        "rows": [
+          [
+            1,
+            "Andorra",
+            "AD"
+          ],
+          [
+            2,
+            "الإمارات العربية المتحدة",
+            "AE"
+          ],
+          [
+            3,
+            "افغانستان",
+            "AF"
+          ],
+          [
+            4,
+            "Antigua and Barbuda",
+            "AG"
+          ],
+          [
+            5,
+            "Anguilla",
+            "AI"
+          ],
+          [
+            6,
+            "Shqipëri",
+            "AL"
+          ],
+          [
+            7,
+            "Հայաստան",
+            "AM"
+          ],
+          [
+            8,
+            "Angola",
+            "AO"
+          ],
+          [
+            9,
+            "Antarctica",
+            "AQ"
+          ],
+          [
+            10,
+            "Argentina",
+            "AR"
+          ],
+          [
+            11,
+            "American Samoa",
+            "AS"
+          ],
+          [
+            12,
+            "Österreich",
+            "AT"
+          ],
+          [
+            13,
+            "Australia",
+            "AU"
+          ],
+          [
+            14,
+            "Aruba",
+            "AW"
+          ],
+          [
+            15,
+            "Åland",
+            "AX"
+          ],
+          [
+            16,
+            "Azərbaycan",
+            "AZ"
+          ],
+          [
+            17,
+            "Bosna i Hercegovina",
+            "BA"
+          ],
+          [
+            18,
+            "Barbados",
+            "BB"
+          ],
+          [
+            19,
+            "বাংলাদেশ",
+            "BD"
+          ],
+          [
+            20,
+            "België",
+            "BE"
+          ],
+          [
+            21,
+            "Burkina Faso",
+            "BF"
+          ],
+          [
+            22,
+            "България",
+            "BG"
+          ],
+          [
+            23,
+            "البحرين",
+            "BH"
+          ],
+          [
+            24,
+            "Uburundi",
+            "BI"
+          ],
+          [
+            25,
+            "Bénin",
+            "BJ"
+          ],
+          [
+            26,
+            "Saint-Barthélemy",
+            "BL"
+          ],
+          [
+            27,
+            "Bermuda",
+            "BM"
+          ],
+          [
+            28,
+            "Brunei",
+            "BN"
+          ],
+          [
+            29,
+            "Bolivia",
+            "BO"
+          ],
+          [
+            30,
+            "Caribisch Nederland",
+            "BQ"
+          ],
+          [
+            31,
+            "Brasil",
+            "BR"
+          ],
+          [
+            32,
+            "Bahamas",
+            "BS"
+          ],
+          [
+            33,
+            "འབྲུག",
+            "BT"
+          ],
+          [
+            34,
+            "Bouvetøya",
+            "BV"
+          ],
+          [
+            35,
+            "Botswana",
+            "BW"
+          ],
+          [
+            36,
+            "Беларусь",
+            "BY"
+          ],
+          [
+            37,
+            "Belize",
+            "BZ"
+          ],
+          [
+            38,
+            "Canada",
+            "CA"
+          ],
+          [
+            39,
+            "Cocos (Keeling) Islands",
+            "CC"
+          ],
+          [
+            40,
+            "Congo-Kinshasa",
+            "CD"
+          ],
+          [
+            41,
+            "Ködörösêse tî Bêafrîka",
+            "CF"
+          ],
+          [
+            42,
+            "Congo-Brazzaville",
+            "CG"
+          ],
+          [
+            43,
+            "Schweiz",
+            "CH"
+          ],
+          [
+            44,
+            "Côte d’Ivoire",
+            "CI"
+          ],
+          [
+            45,
+            "Cook Islands",
+            "CK"
+          ],
+          [
+            46,
+            "Chile",
+            "CL"
+          ],
+          [
+            47,
+            "Cameroun",
+            "CM"
+          ],
+          [
+            48,
+            "中国",
+            "CN"
+          ],
+          [
+            49,
+            "Colombia",
+            "CO"
+          ],
+          [
+            50,
+            "Costa Rica",
+            "CR"
+          ],
+          [
+            51,
+            "Cuba",
+            "CU"
+          ],
+          [
+            52,
+            "Cabo Verde",
+            "CV"
+          ],
+          [
+            53,
+            "Kòrsou",
+            "CW"
+          ],
+          [
+            54,
+            "Christmas Island",
+            "CX"
+          ],
+          [
+            55,
+            "Κύπρος",
+            "CY"
+          ],
+          [
+            56,
+            "Česko",
+            "CZ"
+          ],
+          [
+            57,
+            "Deutschland",
+            "DE"
+          ],
+          [
+            58,
+            "Djibouti",
+            "DJ"
+          ],
+          [
+            59,
+            "Danmark",
+            "DK"
+          ],
+          [
+            60,
+            "Dominica",
+            "DM"
+          ],
+          [
+            61,
+            "República Dominicana",
+            "DO"
+          ],
+          [
+            62,
+            "الجزائر",
+            "DZ"
+          ],
+          [
+            63,
+            "Ecuador",
+            "EC"
+          ],
+          [
+            64,
+            "Eesti",
+            "EE"
+          ],
+          [
+            65,
+            "مصر",
+            "EG"
+          ],
+          [
+            66,
+            "الصحراء الغربية",
+            "EH"
+          ],
+          [
+            67,
+            "ኤርትራ",
+            "ER"
+          ],
+          [
+            68,
+            "España",
+            "ES"
+          ],
+          [
+            69,
+            "ኢትዮጵያ",
+            "ET"
+          ],
+          [
+            70,
+            "Suomi",
+            "FI"
+          ],
+          [
+            71,
+            "Fiji",
+            "FJ"
+          ],
+          [
+            72,
+            "Falkland Islands",
+            "FK"
+          ],
+          [
+            73,
+            "Micronesia",
+            "FM"
+          ],
+          [
+            74,
+            "Føroyar",
+            "FO"
+          ],
+          [
+            75,
+            "France",
+            "FR"
+          ],
+          [
+            76,
+            "Gabon",
+            "GA"
+          ],
+          [
+            77,
+            "United Kingdom",
+            "GB"
+          ],
+          [
+            78,
+            "Grenada",
+            "GD"
+          ],
+          [
+            79,
+            "საქართველო",
+            "GE"
+          ],
+          [
+            80,
+            "Guyane française",
+            "GF"
+          ],
+          [
+            81,
+            "Guernsey",
+            "GG"
+          ],
+          [
+            82,
+            "Ghana",
+            "GH"
+          ],
+          [
+            83,
+            "Gibraltar",
+            "GI"
+          ],
+          [
+            84,
+            "Kalaallit Nunaat",
+            "GL"
+          ],
+          [
+            85,
+            "Gambia",
+            "GM"
+          ],
+          [
+            86,
+            "Guinée",
+            "GN"
+          ],
+          [
+            87,
+            "Guadeloupe",
+            "GP"
+          ],
+          [
+            88,
+            "Guinea Ecuatorial",
+            "GQ"
+          ],
+          [
+            89,
+            "Ελλάδα",
+            "GR"
+          ],
+          [
+            90,
+            "South Georgia & South Sandwich Islands",
+            "GS"
+          ],
+          [
+            91,
+            "Guatemala",
+            "GT"
+          ],
+          [
+            92,
+            "Guam",
+            "GU"
+          ],
+          [
+            93,
+            "Guiné-Bissau",
+            "GW"
+          ],
+          [
+            94,
+            "Guyana",
+            "GY"
+          ],
+          [
+            95,
+            "香港",
+            "HK"
+          ],
+          [
+            96,
+            "Heard & McDonald Islands",
+            "HM"
+          ],
+          [
+            97,
+            "Honduras",
+            "HN"
+          ],
+          [
+            98,
+            "Hrvatska",
+            "HR"
+          ],
+          [
+            99,
+            "Haïti",
+            "HT"
+          ],
+          [
+            100,
+            "Magyarország",
+            "HU"
+          ],
+          [
+            101,
+            "Indonesia",
+            "ID"
+          ],
+          [
+            102,
+            "Éire",
+            "IE"
+          ],
+          [
+            103,
+            "ישראל",
+            "IL"
+          ],
+          [
+            104,
+            "Isle of Man",
+            "IM"
+          ],
+          [
+            105,
+            "भारत",
+            "IN"
+          ],
+          [
+            106,
+            "British Indian Ocean Territory",
+            "IO"
+          ],
+          [
+            107,
+            "العراق",
+            "IQ"
+          ],
+          [
+            108,
+            "ایران",
+            "IR"
+          ],
+          [
+            109,
+            "Ísland",
+            "IS"
+          ],
+          [
+            110,
+            "Italia",
+            "IT"
+          ],
+          [
+            111,
+            "Jersey",
+            "JE"
+          ],
+          [
+            112,
+            "Jamaica",
+            "JM"
+          ],
+          [
+            113,
+            "الأردن",
+            "JO"
+          ],
+          [
+            114,
+            "日本",
+            "JP"
+          ],
+          [
+            115,
+            "Kenya",
+            "KE"
+          ],
+          [
+            116,
+            "Кыргызстан",
+            "KG"
+          ],
+          [
+            117,
+            "កម្ពុជា",
+            "KH"
+          ],
+          [
+            118,
+            "Kiribati",
+            "KI"
+          ],
+          [
+            119,
+            "جزر القمر",
+            "KM"
+          ],
+          [
+            120,
+            "St. Kitts & Nevis",
+            "KN"
+          ],
+          [
+            121,
+            "조선",
+            "KP"
+          ],
+          [
+            122,
+            "대한민국",
+            "KR"
+          ],
+          [
+            123,
+            "الكويت",
+            "KW"
+          ],
+          [
+            124,
+            "Cayman Islands",
+            "KY"
+          ],
+          [
+            125,
+            "Қазақстан",
+            "KZ"
+          ],
+          [
+            126,
+            "ລາວ",
+            "LA"
+          ],
+          [
+            127,
+            "لبنان",
+            "LB"
+          ],
+          [
+            128,
+            "St. Lucia",
+            "LC"
+          ],
+          [
+            129,
+            "Liechtenstein",
+            "LI"
+          ],
+          [
+            130,
+            "ශ්‍රී ලංකාව",
+            "LK"
+          ],
+          [
+            131,
+            "Liberia",
+            "LR"
+          ],
+          [
+            132,
+            "Lesotho",
+            "LS"
+          ],
+          [
+            133,
+            "Lietuva",
+            "LT"
+          ],
+          [
+            134,
+            "Lëtzebuerg",
+            "LU"
+          ],
+          [
+            135,
+            "Latvija",
+            "LV"
+          ],
+          [
+            136,
+            "ليبيا",
+            "LY"
+          ],
+          [
+            137,
+            "المغرب",
+            "MA"
+          ],
+          [
+            138,
+            "Monaco",
+            "MC"
+          ],
+          [
+            139,
+            "Republica Moldova",
+            "MD"
+          ],
+          [
+            140,
+            "Crna Gora",
+            "ME"
+          ],
+          [
+            141,
+            "Saint-Martin",
+            "MF"
+          ],
+          [
+            142,
+            "Madagasikara",
+            "MG"
+          ],
+          [
+            143,
+            "Marshall Islands",
+            "MH"
+          ],
+          [
+            144,
+            "Северна Македонија",
+            "MK"
+          ],
+          [
+            145,
+            "Mali",
+            "ML"
+          ],
+          [
+            146,
+            "မြန်မာ",
+            "MM"
+          ],
+          [
+            147,
+            "Монгол",
+            "MN"
+          ],
+          [
+            148,
+            "澳門",
+            "MO"
+          ],
+          [
+            149,
+            "Northern Mariana Islands",
+            "MP"
+          ],
+          [
+            150,
+            "Martinique",
+            "MQ"
+          ],
+          [
+            151,
+            "موريتانيا",
+            "MR"
+          ],
+          [
+            152,
+            "Montserrat",
+            "MS"
+          ],
+          [
+            153,
+            "Malta",
+            "MT"
+          ],
+          [
+            154,
+            "Maurice",
+            "MU"
+          ],
+          [
+            155,
+            "ދިވެހި ރާއްޖެ",
+            "MV"
+          ],
+          [
+            156,
+            "Malawi",
+            "MW"
+          ],
+          [
+            157,
+            "México",
+            "MX"
+          ],
+          [
+            158,
+            "Malaysia",
+            "MY"
+          ],
+          [
+            159,
+            "Moçambique",
+            "MZ"
+          ],
+          [
+            160,
+            "Namibia",
+            "NA"
+          ],
+          [
+            161,
+            "Nouvelle-Calédonie",
+            "NC"
+          ],
+          [
+            162,
+            "Niger",
+            "NE"
+          ],
+          [
+            163,
+            "Norfolk Island",
+            "NF"
+          ],
+          [
+            164,
+            "Nigeria",
+            "NG"
+          ],
+          [
+            165,
+            "Nicaragua",
+            "NI"
+          ],
+          [
+            166,
+            "Nederland",
+            "NL"
+          ],
+          [
+            167,
+            "Norge",
+            "NO"
+          ],
+          [
+            168,
+            "नेपाल",
+            "NP"
+          ],
+          [
+            169,
+            "Nauru",
+            "NR"
+          ],
+          [
+            170,
+            "Niue",
+            "NU"
+          ],
+          [
+            171,
+            "Aotearoa",
+            "NZ"
+          ],
+          [
+            172,
+            "عُمان",
+            "OM"
+          ],
+          [
+            173,
+            "Panamá",
+            "PA"
+          ],
+          [
+            174,
+            "Perú",
+            "PE"
+          ],
+          [
+            175,
+            "Polynésie française",
+            "PF"
+          ],
+          [
+            176,
+            "Papua Niugini",
+            "PG"
+          ],
+          [
+            177,
+            "Pilipinas",
+            "PH"
+          ],
+          [
+            178,
+            "پاکستان",
+            "PK"
+          ],
+          [
+            179,
+            "Polska",
+            "PL"
+          ],
+          [
+            180,
+            "Saint-Pierre-et-Miquelon",
+            "PM"
+          ],
+          [
+            181,
+            "Pitcairn Islands",
+            "PN"
+          ],
+          [
+            182,
+            "Puerto Rico",
+            "PR"
+          ],
+          [
+            183,
+            "فلسطين",
+            "PS"
+          ],
+          [
+            184,
+            "Portugal",
+            "PT"
+          ],
+          [
+            185,
+            "Belau",
+            "PW"
+          ],
+          [
+            186,
+            "Paraguai",
+            "PY"
+          ],
+          [
+            187,
+            "قطر",
+            "QA"
+          ],
+          [
+            188,
+            "La Réunion",
+            "RE"
+          ],
+          [
+            189,
+            "România",
+            "RO"
+          ],
+          [
+            190,
+            "Србија",
+            "RS"
+          ],
+          [
+            191,
+            "Россия",
+            "RU"
+          ],
+          [
+            192,
+            "U Rwanda",
+            "RW"
+          ],
+          [
+            193,
+            "المملكة العربية السعودية",
+            "SA"
+          ],
+          [
+            194,
+            "Solomon Islands",
+            "SB"
+          ],
+          [
+            195,
+            "Seychelles",
+            "SC"
+          ],
+          [
+            196,
+            "السودان",
+            "SD"
+          ],
+          [
+            197,
+            "Sverige",
+            "SE"
+          ],
+          [
+            198,
+            "Singapore",
+            "SG"
+          ],
+          [
+            199,
+            "St. Helena",
+            "SH"
+          ],
+          [
+            200,
+            "Slovenija",
+            "SI"
+          ],
+          [
+            201,
+            "Svalbard og Jan Mayen",
+            "SJ"
+          ],
+          [
+            202,
+            "Slovensko",
+            "SK"
+          ],
+          [
+            203,
+            "Sierra Leone",
+            "SL"
+          ],
+          [
+            204,
+            "San Marino",
+            "SM"
+          ],
+          [
+            205,
+            "Senegaal",
+            "SN"
+          ],
+          [
+            206,
+            "Soomaaliya",
+            "SO"
+          ],
+          [
+            207,
+            "Suriname",
+            "SR"
+          ],
+          [
+            208,
+            "South Sudan",
+            "SS"
+          ],
+          [
+            209,
+            "São Tomé e Príncipe",
+            "ST"
+          ],
+          [
+            210,
+            "El Salvador",
+            "SV"
+          ],
+          [
+            211,
+            "Sint Maarten",
+            "SX"
+          ],
+          [
+            212,
+            "سوريا",
+            "SY"
+          ],
+          [
+            213,
+            "Eswatini",
+            "SZ"
+          ],
+          [
+            214,
+            "Turks & Caicos Islands",
+            "TC"
+          ],
+          [
+            215,
+            "تشاد",
+            "TD"
+          ],
+          [
+            216,
+            "Terres australes françaises",
+            "TF"
+          ],
+          [
+            217,
+            "Togo",
+            "TG"
+          ],
+          [
+            218,
+            "ไทย",
+            "TH"
+          ],
+          [
+            219,
+            "Тоҷикистон",
+            "TJ"
+          ],
+          [
+            220,
+            "Tokelau",
+            "TK"
+          ],
+          [
+            221,
+            "Timor-Leste",
+            "TL"
+          ],
+          [
+            222,
+            "Türkmenistan",
+            "TM"
+          ],
+          [
+            223,
+            "تونس",
+            "TN"
+          ],
+          [
+            224,
+            "Tonga",
+            "TO"
+          ],
+          [
+            225,
+            "Türkiye",
+            "TR"
+          ],
+          [
+            226,
+            "Trinidad & Tobago",
+            "TT"
+          ],
+          [
+            227,
+            "Tuvalu",
+            "TV"
+          ],
+          [
+            228,
+            "台灣",
+            "TW"
+          ],
+          [
+            229,
+            "Tanzania",
+            "TZ"
+          ],
+          [
+            230,
+            "Україна",
+            "UA"
+          ],
+          [
+            231,
+            "Uganda",
+            "UG"
+          ],
+          [
+            232,
+            "U.S. Outlying Islands",
+            "UM"
+          ],
+          [
+            233,
+            "United States",
+            "US"
+          ],
+          [
+            234,
+            "Uruguay",
+            "UY"
+          ],
+          [
+            235,
+            "Oʻzbekiston",
+            "UZ"
+          ],
+          [
+            236,
+            "Città del Vaticano",
+            "VA"
+          ],
+          [
+            237,
+            "St. Vincent & Grenadines",
+            "VC"
+          ],
+          [
+            238,
+            "Venezuela",
+            "VE"
+          ],
+          [
+            239,
+            "British Virgin Islands",
+            "VG"
+          ],
+          [
+            240,
+            "U.S. Virgin Islands",
+            "VI"
+          ],
+          [
+            241,
+            "Việt Nam",
+            "VN"
+          ],
+          [
+            242,
+            "Vanuatu",
+            "VU"
+          ],
+          [
+            243,
+            "Wallis-et-Futuna",
+            "WF"
+          ],
+          [
+            244,
+            "Samoa",
+            "WS"
+          ],
+          [
+            245,
+            "اليمن",
+            "YE"
+          ],
+          [
+            246,
+            "Mayotte",
+            "YT"
+          ],
+          [
+            247,
+            "South Africa",
+            "ZA"
+          ],
+          [
+            248,
+            "Zambia",
+            "ZM"
+          ],
+          [
+            249,
+            "Zimbabwe",
+            "ZW"
+          ]
+        ],
+        "row_count": 249,
+        "preserve_explicit_ids": true,
+        "notes": "Embedded initial seed records, not column DEFAULT constraints; preserve Unicode text and SQL NULL precisely."
+      }
     },
     {
       "name": "pvl_currencies",
-      "description": "Currency reference records used by accounts, expenses, and settings.",
-      "description_status": "inferred; editable",
+      "description": "ISO 4217 currency, unit-of-account, and special-purpose code reference catalog with preferred localized names; 178 default rows supplied in SQL.",
+      "description_status": "source data + previous agreed design",
       "columns": [
         {
           "name": "id",
@@ -835,8 +2045,8 @@
         },
         {
           "name": "name",
-          "description": "Currency name.",
-          "description_status": "inferred",
+          "description": "Preferred currency or unit name; often localized to the associated currency’s language, with descriptive labels for special codes.",
+          "description_status": "user-specified",
           "source_declared_type": "TEXT",
           "logical_type": "text",
           "nullable": false,
@@ -860,6 +2070,20 @@
           "default_sql": null,
           "references": null,
           "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "iso",
+          "description": "ISO 4217 three-letter currency/special-purpose code; nullable TEXT, with a unique standalone index (multiple NULLs still permitted).",
+          "description_status": "user-specified",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
         }
       ],
       "primary_key": [
@@ -868,16 +2092,1112 @@
       "unique_constraints": [],
       "foreign_keys": [],
       "check_constraints": [],
-      "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_currencies\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)",
-      "additional_notes": [],
+      "explicit_indexes": [
+        {
+          "name": "ux_pvl_currencies_iso",
+          "columns": [
+            "iso"
+          ],
+          "unique": true,
+          "partial": false,
+          "source_create_sql": "CREATE UNIQUE INDEX ux_pvl_currencies_iso\n    ON pvl_currencies (iso);"
+        }
+      ],
+      "source_create_sql": "CREATE TABLE \"pvl_currencies\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, iso TEXT);",
+      "additional_notes": [
+        "New iso TEXT column and standalone UNIQUE index ux_pvl_currencies_iso. The column is nullable; SQLite UNIQUE indexes permit multiple NULL values.",
+        "178 default currency records with explicit IDs are embedded in pvledger(3).sql, including special and non-circulating ISO codes."
+      ],
       "source_name": "pvl_currencies",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_currencies\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_currencies\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, iso TEXT);",
+      "seed_data": {
+        "source": "pvledger(3).sql",
+        "kind": "default_reference_data",
+        "columns": [
+          "id",
+          "name",
+          "description",
+          "iso"
+        ],
+        "rows": [
+          [
+            1,
+            "درهم إماراتي",
+            null,
+            "AED"
+          ],
+          [
+            2,
+            "افغانی",
+            null,
+            "AFN"
+          ],
+          [
+            3,
+            "Leku shqiptar",
+            null,
+            "ALL"
+          ],
+          [
+            4,
+            "հայկական դրամ",
+            null,
+            "AMD"
+          ],
+          [
+            5,
+            "kwanza angolano",
+            null,
+            "AOA"
+          ],
+          [
+            6,
+            "peso argentino",
+            null,
+            "ARS"
+          ],
+          [
+            7,
+            "Australian Dollar",
+            null,
+            "AUD"
+          ],
+          [
+            8,
+            "Arubaanse gulden",
+            null,
+            "AWG"
+          ],
+          [
+            9,
+            "Azərbaycan Manatı",
+            null,
+            "AZN"
+          ],
+          [
+            10,
+            "Bosanskohercegovačka konvertibilna marka",
+            null,
+            "BAM"
+          ],
+          [
+            11,
+            "Barbadian Dollar",
+            null,
+            "BBD"
+          ],
+          [
+            12,
+            "টাকা",
+            null,
+            "BDT"
+          ],
+          [
+            13,
+            "دينار بحريني",
+            null,
+            "BHD"
+          ],
+          [
+            14,
+            "franc burundais",
+            null,
+            "BIF"
+          ],
+          [
+            15,
+            "Bermudian Dollar",
+            null,
+            "BMD"
+          ],
+          [
+            16,
+            "Dolar Brunei",
+            null,
+            "BND"
+          ],
+          [
+            17,
+            "boliviano",
+            null,
+            "BOB"
+          ],
+          [
+            18,
+            "mvdol",
+            null,
+            "BOV"
+          ],
+          [
+            19,
+            "Real brasileiro",
+            null,
+            "BRL"
+          ],
+          [
+            20,
+            "Bahamian Dollar",
+            null,
+            "BSD"
+          ],
+          [
+            21,
+            "དངུལ་ཀྲམ",
+            null,
+            "BTN"
+          ],
+          [
+            22,
+            "Botswanan Pula",
+            null,
+            "BWP"
+          ],
+          [
+            23,
+            "беларускі рубель",
+            null,
+            "BYN"
+          ],
+          [
+            24,
+            "Belize Dollar",
+            null,
+            "BZD"
+          ],
+          [
+            25,
+            "Canadian Dollar",
+            null,
+            "CAD"
+          ],
+          [
+            26,
+            "franc congolais",
+            null,
+            "CDF"
+          ],
+          [
+            27,
+            "WIR-Euro",
+            null,
+            "CHE"
+          ],
+          [
+            28,
+            "Schweizer Franken",
+            null,
+            "CHF"
+          ],
+          [
+            29,
+            "WIR-Franken",
+            null,
+            "CHW"
+          ],
+          [
+            30,
+            "unidad de fomento",
+            null,
+            "CLF"
+          ],
+          [
+            31,
+            "Peso chileno",
+            null,
+            "CLP"
+          ],
+          [
+            32,
+            "人民币",
+            null,
+            "CNY"
+          ],
+          [
+            33,
+            "peso colombiano",
+            null,
+            "COP"
+          ],
+          [
+            34,
+            "unidad de valor real",
+            null,
+            "COU"
+          ],
+          [
+            35,
+            "colón costarricense",
+            null,
+            "CRC"
+          ],
+          [
+            36,
+            "peso cubano",
+            null,
+            "CUP"
+          ],
+          [
+            37,
+            "escudo cabo-verdiano",
+            null,
+            "CVE"
+          ],
+          [
+            38,
+            "česká koruna",
+            null,
+            "CZK"
+          ],
+          [
+            39,
+            "franc djiboutien",
+            null,
+            "DJF"
+          ],
+          [
+            40,
+            "dansk krone",
+            null,
+            "DKK"
+          ],
+          [
+            41,
+            "peso dominicano",
+            null,
+            "DOP"
+          ],
+          [
+            42,
+            "دينار جزائري",
+            null,
+            "DZD"
+          ],
+          [
+            43,
+            "جنيه مصري",
+            null,
+            "EGP"
+          ],
+          [
+            44,
+            "ኤርትራዊ ናቕፋ",
+            null,
+            "ERN"
+          ],
+          [
+            45,
+            "የኢትዮጵያ ብር",
+            null,
+            "ETB"
+          ],
+          [
+            46,
+            "euro",
+            null,
+            "EUR"
+          ],
+          [
+            47,
+            "Fijian Dollar",
+            null,
+            "FJD"
+          ],
+          [
+            48,
+            "Falkland Islands Pound",
+            null,
+            "FKP"
+          ],
+          [
+            49,
+            "British Pound",
+            null,
+            "GBP"
+          ],
+          [
+            50,
+            "ქართული ლარი",
+            null,
+            "GEL"
+          ],
+          [
+            51,
+            "Ghanaian Cedi",
+            null,
+            "GHS"
+          ],
+          [
+            52,
+            "Gibraltar Pound",
+            null,
+            "GIP"
+          ],
+          [
+            53,
+            "Gambian Dalasi",
+            null,
+            "GMD"
+          ],
+          [
+            54,
+            "franc guinéen",
+            null,
+            "GNF"
+          ],
+          [
+            55,
+            "quetzal",
+            null,
+            "GTQ"
+          ],
+          [
+            56,
+            "Guyanaese Dollar",
+            null,
+            "GYD"
+          ],
+          [
+            57,
+            "港元",
+            null,
+            "HKD"
+          ],
+          [
+            58,
+            "lempira hondureño",
+            null,
+            "HNL"
+          ],
+          [
+            59,
+            "gourde haïtienne",
+            null,
+            "HTG"
+          ],
+          [
+            60,
+            "magyar forint",
+            null,
+            "HUF"
+          ],
+          [
+            61,
+            "Rupiah Indonesia",
+            null,
+            "IDR"
+          ],
+          [
+            62,
+            "שקל חדש",
+            null,
+            "ILS"
+          ],
+          [
+            63,
+            "भारतीय रुपया",
+            null,
+            "INR"
+          ],
+          [
+            64,
+            "دينار عراقي",
+            null,
+            "IQD"
+          ],
+          [
+            65,
+            "ریال ایران",
+            null,
+            "IRR"
+          ],
+          [
+            66,
+            "íslensk króna",
+            null,
+            "ISK"
+          ],
+          [
+            67,
+            "Jamaican Dollar",
+            null,
+            "JMD"
+          ],
+          [
+            68,
+            "دينار أردني",
+            null,
+            "JOD"
+          ],
+          [
+            69,
+            "日本円",
+            null,
+            "JPY"
+          ],
+          [
+            70,
+            "Shilingi ya Kenya",
+            null,
+            "KES"
+          ],
+          [
+            71,
+            "Кыргызстан сому",
+            null,
+            "KGS"
+          ],
+          [
+            72,
+            "រៀល​កម្ពុជា",
+            null,
+            "KHR"
+          ],
+          [
+            73,
+            "franc comorien",
+            null,
+            "KMF"
+          ],
+          [
+            74,
+            "조선 민주주의 인민 공화국 원",
+            null,
+            "KPW"
+          ],
+          [
+            75,
+            "대한민국 원",
+            null,
+            "KRW"
+          ],
+          [
+            76,
+            "دينار كويتي",
+            null,
+            "KWD"
+          ],
+          [
+            77,
+            "Cayman Islands Dollar",
+            null,
+            "KYD"
+          ],
+          [
+            78,
+            "Қазақстан теңгесі",
+            null,
+            "KZT"
+          ],
+          [
+            79,
+            "ລາວ ກີບ",
+            null,
+            "LAK"
+          ],
+          [
+            80,
+            "ليرة لبنانية",
+            null,
+            "LBP"
+          ],
+          [
+            81,
+            "ශ්‍රී ලංකා රුපියල",
+            null,
+            "LKR"
+          ],
+          [
+            82,
+            "Liberian Dollar",
+            null,
+            "LRD"
+          ],
+          [
+            83,
+            "loti",
+            null,
+            "LSL"
+          ],
+          [
+            84,
+            "دينار ليبي",
+            null,
+            "LYD"
+          ],
+          [
+            85,
+            "درهم مغربي",
+            null,
+            "MAD"
+          ],
+          [
+            86,
+            "leu moldovenesc",
+            null,
+            "MDL"
+          ],
+          [
+            87,
+            "Ariary",
+            null,
+            "MGA"
+          ],
+          [
+            88,
+            "Македонски денар",
+            null,
+            "MKD"
+          ],
+          [
+            89,
+            "မြန်မာ ကျပ်",
+            null,
+            "MMK"
+          ],
+          [
+            90,
+            "Монгол төгрөг",
+            null,
+            "MNT"
+          ],
+          [
+            91,
+            "澳門元",
+            null,
+            "MOP"
+          ],
+          [
+            92,
+            "أوقية موريتانية",
+            null,
+            "MRU"
+          ],
+          [
+            93,
+            "Mauritian Rupee",
+            null,
+            "MUR"
+          ],
+          [
+            94,
+            "ރުފިޔާ",
+            null,
+            "MVR"
+          ],
+          [
+            95,
+            "Malawian Kwacha",
+            null,
+            "MWK"
+          ],
+          [
+            96,
+            "peso mexicano",
+            null,
+            "MXN"
+          ],
+          [
+            97,
+            "unidad de inversión (UDI)",
+            null,
+            "MXV"
+          ],
+          [
+            98,
+            "Ringgit Malaysia",
+            null,
+            "MYR"
+          ],
+          [
+            99,
+            "metical moçambicano",
+            null,
+            "MZN"
+          ],
+          [
+            100,
+            "Namibian Dollar",
+            null,
+            "NAD"
+          ],
+          [
+            101,
+            "Nigerian Naira",
+            null,
+            "NGN"
+          ],
+          [
+            102,
+            "córdoba nicaragüense",
+            null,
+            "NIO"
+          ],
+          [
+            103,
+            "norske kroner",
+            null,
+            "NOK"
+          ],
+          [
+            104,
+            "नेपाली रूपैयाँ",
+            null,
+            "NPR"
+          ],
+          [
+            105,
+            "New Zealand Dollar",
+            null,
+            "NZD"
+          ],
+          [
+            106,
+            "ريال عماني",
+            null,
+            "OMR"
+          ],
+          [
+            107,
+            "balboa panameño",
+            null,
+            "PAB"
+          ],
+          [
+            108,
+            "sol peruano",
+            null,
+            "PEN"
+          ],
+          [
+            109,
+            "Papua New Guinean Kina",
+            null,
+            "PGK"
+          ],
+          [
+            110,
+            "Piso ng Pilipinas",
+            null,
+            "PHP"
+          ],
+          [
+            111,
+            "پاکستانی روپیہ",
+            null,
+            "PKR"
+          ],
+          [
+            112,
+            "złoty polski",
+            null,
+            "PLN"
+          ],
+          [
+            113,
+            "guaraní paraguayo",
+            null,
+            "PYG"
+          ],
+          [
+            114,
+            "ريال قطري",
+            null,
+            "QAR"
+          ],
+          [
+            115,
+            "leu românesc",
+            null,
+            "RON"
+          ],
+          [
+            116,
+            "српски динар",
+            null,
+            "RSD"
+          ],
+          [
+            117,
+            "российский рубль",
+            null,
+            "RUB"
+          ],
+          [
+            118,
+            "ifaranga ry’u Rwanda",
+            null,
+            "RWF"
+          ],
+          [
+            119,
+            "ريال سعودي",
+            null,
+            "SAR"
+          ],
+          [
+            120,
+            "Solomon Islands Dollar",
+            null,
+            "SBD"
+          ],
+          [
+            121,
+            "Seychellois Rupee",
+            null,
+            "SCR"
+          ],
+          [
+            122,
+            "جنيه سوداني",
+            null,
+            "SDG"
+          ],
+          [
+            123,
+            "svensk krona",
+            null,
+            "SEK"
+          ],
+          [
+            124,
+            "Singapore Dollar",
+            null,
+            "SGD"
+          ],
+          [
+            125,
+            "St Helena Pound",
+            null,
+            "SHP"
+          ],
+          [
+            126,
+            "Sierra Leonean Leone",
+            null,
+            "SLE"
+          ],
+          [
+            127,
+            "Shilingka Soomaaliya",
+            null,
+            "SOS"
+          ],
+          [
+            128,
+            "Surinaamse dollar",
+            null,
+            "SRD"
+          ],
+          [
+            129,
+            "South Sudanese Pound",
+            null,
+            "SSP"
+          ],
+          [
+            130,
+            "dobra de São Tomé e Príncipe",
+            null,
+            "STN"
+          ],
+          [
+            131,
+            "colón salvadoreño",
+            null,
+            "SVC"
+          ],
+          [
+            132,
+            "ليرة سورية",
+            null,
+            "SYP"
+          ],
+          [
+            133,
+            "lilangeni",
+            null,
+            "SZL"
+          ],
+          [
+            134,
+            "บาท",
+            null,
+            "THB"
+          ],
+          [
+            135,
+            "Сомонии Тоҷикистон",
+            null,
+            "TJS"
+          ],
+          [
+            136,
+            "Türkmen manady",
+            null,
+            "TMT"
+          ],
+          [
+            137,
+            "دينار تونسي",
+            null,
+            "TND"
+          ],
+          [
+            138,
+            "Paʻanga fakatonga",
+            null,
+            "TOP"
+          ],
+          [
+            139,
+            "Türk lirası",
+            null,
+            "TRY"
+          ],
+          [
+            140,
+            "Trinidad & Tobago Dollar",
+            null,
+            "TTD"
+          ],
+          [
+            141,
+            "新台幣",
+            null,
+            "TWD"
+          ],
+          [
+            142,
+            "Shilingi ya Tanzania",
+            null,
+            "TZS"
+          ],
+          [
+            143,
+            "українська гривня",
+            null,
+            "UAH"
+          ],
+          [
+            144,
+            "Ugandan Shilling",
+            null,
+            "UGX"
+          ],
+          [
+            145,
+            "US Dollar",
+            null,
+            "USD"
+          ],
+          [
+            146,
+            "US Dollar (next day)",
+            null,
+            "USN"
+          ],
+          [
+            147,
+            "peso en unidades indexadas (UI)",
+            null,
+            "UYI"
+          ],
+          [
+            148,
+            "peso uruguayo",
+            null,
+            "UYU"
+          ],
+          [
+            149,
+            "unidad previsional",
+            null,
+            "UYW"
+          ],
+          [
+            150,
+            "O‘zbekiston so‘mi",
+            null,
+            "UZS"
+          ],
+          [
+            151,
+            "bolívar soberano",
+            null,
+            "VED"
+          ],
+          [
+            152,
+            "bolívar soberano",
+            null,
+            "VES"
+          ],
+          [
+            153,
+            "đồng Việt Nam",
+            null,
+            "VND"
+          ],
+          [
+            154,
+            "Vanuatu Vatu",
+            null,
+            "VUV"
+          ],
+          [
+            155,
+            "tālā",
+            null,
+            "WST"
+          ],
+          [
+            156,
+            "دينار حسابي عربي",
+            null,
+            "XAD"
+          ],
+          [
+            157,
+            "franc CFA (BEAC)",
+            null,
+            "XAF"
+          ],
+          [
+            158,
+            "Silver",
+            null,
+            "XAG"
+          ],
+          [
+            159,
+            "Gold",
+            null,
+            "XAU"
+          ],
+          [
+            160,
+            "Bond Markets Unit European Composite Unit (EURCO)",
+            null,
+            "XBA"
+          ],
+          [
+            161,
+            "Bond Markets Unit European Monetary Unit (E.M.U.-6)",
+            null,
+            "XBB"
+          ],
+          [
+            162,
+            "Bond Markets Unit European Unit of Account 9 (E.U.A.-9)",
+            null,
+            "XBC"
+          ],
+          [
+            163,
+            "Bond Markets Unit European Unit of Account 17 (E.U.A.-17)",
+            null,
+            "XBD"
+          ],
+          [
+            164,
+            "East Caribbean Dollar",
+            null,
+            "XCD"
+          ],
+          [
+            165,
+            "Caribische gulden",
+            null,
+            "XCG"
+          ],
+          [
+            166,
+            "Special Drawing Rights",
+            null,
+            "XDR"
+          ],
+          [
+            167,
+            "franc CFA (BCEAO)",
+            null,
+            "XOF"
+          ],
+          [
+            168,
+            "Palladium",
+            null,
+            "XPD"
+          ],
+          [
+            169,
+            "franc CFP",
+            null,
+            "XPF"
+          ],
+          [
+            170,
+            "Platinum",
+            null,
+            "XPT"
+          ],
+          [
+            171,
+            "sucre",
+            null,
+            "XSU"
+          ],
+          [
+            172,
+            "Testing currency code",
+            null,
+            "XTS"
+          ],
+          [
+            173,
+            "African Development Bank unit of account",
+            null,
+            "XUA"
+          ],
+          [
+            174,
+            "No currency",
+            null,
+            "XXX"
+          ],
+          [
+            175,
+            "ريال يمني",
+            null,
+            "YER"
+          ],
+          [
+            176,
+            "South African Rand",
+            null,
+            "ZAR"
+          ],
+          [
+            177,
+            "Zambian Kwacha",
+            null,
+            "ZMW"
+          ],
+          [
+            178,
+            "Zimbabwe Gold",
+            null,
+            "ZWG"
+          ]
+        ],
+        "row_count": 178,
+        "preserve_explicit_ids": true,
+        "notes": "Embedded initial seed records, not column DEFAULT constraints; preserve Unicode text and SQL NULL precisely."
+      }
     },
     {
       "name": "pvl_debts",
-      "description": "Debt entries linked to a required current account.",
-      "description_status": "inferred; editable",
+      "description": "Debts linked to a required current account; amount represents currently outstanding debt.",
+      "description_status": "user-specified semantics; editable",
       "columns": [
         {
           "name": "id",
@@ -909,8 +3229,8 @@
         },
         {
           "name": "amount",
-          "description": "Debt amount; currency is not stored directly here.",
-          "description_status": "inferred",
+          "description": "Current outstanding debt, not the original principal or initial debt amount.",
+          "description_status": "user-specified",
           "source_declared_type": "REAL",
           "logical_type": "floating_point",
           "nullable": true,
@@ -989,19 +3309,20 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         }
       ],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_debts\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, amount REAL, description TEXT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, date INTEGER)",
+      "source_create_sql": "CREATE TABLE \"pvl_debts\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, amount REAL, description TEXT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, date INTEGER);",
       "additional_notes": [],
       "source_name": "pvl_debts",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_debts\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, amount REAL, description TEXT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, date INTEGER)"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_debts\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, amount REAL, description TEXT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, date INTEGER);"
     },
     {
       "name": "pvl_expenses",
-      "description": "Expense transactions with optional account, category, and currency associations.",
+      "description": "Expense transactions assigned to a required current account, expense category, and currency.",
       "description_status": "inferred; editable",
       "columns": [
         {
@@ -1020,11 +3341,11 @@
         },
         {
           "name": "id_account",
-          "description": "Associated current account, if recorded.",
+          "description": "Required current-account reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -1067,7 +3388,7 @@
           "name": "date",
           "description": "Unix timestamp of the expense date or event.",
           "description_status": "storage format confirmed by user; business meaning inferred",
-          "source_declared_type": "NUMERIC",
+          "source_declared_type": "INTEGER",
           "logical_type": "unix_timestamp",
           "nullable": true,
           "primary_key": false,
@@ -1099,11 +3420,11 @@
         },
         {
           "name": "id_category",
-          "description": "Expense category, if recorded.",
+          "description": "Required expense-category reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -1116,11 +3437,11 @@
         },
         {
           "name": "id_currency",
-          "description": "Expense currency, if recorded.",
+          "description": "Required currency reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -1148,7 +3469,8 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         },
         {
           "columns": [
@@ -1161,7 +3483,8 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         },
         {
           "columns": [
@@ -1174,15 +3497,16 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         }
       ],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_expenses\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, date NUMERIC, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id), id_currency INTEGER REFERENCES pvl_currencies (id))",
+      "source_create_sql": "CREATE TABLE \"pvl_expenses\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, name TEXT NOT NULL, date INTEGER, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id) NOT NULL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);",
       "additional_notes": [],
       "source_name": "pvl_expenses",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, date INTEGER, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id), id_currency INTEGER REFERENCES pvl_currencies (id))"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, name TEXT NOT NULL, date INTEGER, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id) NOT NULL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);"
     },
     {
       "name": "pvl_expenses_categories",
@@ -1239,14 +3563,14 @@
       "foreign_keys": [],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_expenses_categories\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)",
+      "source_create_sql": "CREATE TABLE \"pvl_expenses_categories\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT);",
       "additional_notes": [],
       "source_name": "pvl_expenses_categories",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses_categories\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT)"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses_categories\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT);"
     },
     {
       "name": "pvl_expenses_planned",
-      "description": "Planned expense records with optional account and currency links and an integer status marker.",
+      "description": "Planned expense records assigned to a required current account and currency, with an optional integer status code.",
       "description_status": "inferred; editable",
       "columns": [
         {
@@ -1265,11 +3589,11 @@
         },
         {
           "name": "id_account",
-          "description": "Associated current account, if recorded.",
+          "description": "Required current-account reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -1344,8 +3668,8 @@
         },
         {
           "name": "status",
-          "description": "Application-defined integer status code for planned expenses; meanings of values such as 1, 2 and 3 are defined in application logic.",
-          "description_status": "integer-code storage confirmed; meanings unresolved",
+          "description": "Processing status code: 0=Planned; 1=Processed; 2=Processed with changes; 3=Declined. NULL is allowed by the SQL schema.",
+          "description_status": "user-specified",
           "source_declared_type": "INTEGER",
           "logical_type": "application_defined_integer_code",
           "nullable": true,
@@ -1368,11 +3692,11 @@
         },
         {
           "name": "id_currency",
-          "description": "Currency for the planned expense, if recorded.",
+          "description": "Required currency reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -1400,7 +3724,8 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         },
         {
           "columns": [
@@ -1413,21 +3738,23 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         }
       ],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_expenses_planed\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, description TEXT, date INTEGER, status INTEGER, id_currency INTEGER REFERENCES pvl_currencies (id))",
+      "source_create_sql": "CREATE TABLE \"pvl_expenses_planned\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, name TEXT NOT NULL, description TEXT, date INTEGER, status INTEGER, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);",
       "additional_notes": [
-        "Corrected table spelling: source table is pvl_expenses_planed; target table is pvl_expenses_planned. SQLite migration: ALTER TABLE pvl_expenses_planed RENAME TO pvl_expenses_planned."
+        "Corrected spelling pvl_expenses_planned is present in the latest source SQL. Earlier historical SQL used pvl_expenses_planed.",
+        "Application status values: 0 Planned; 1 Processed; 2 Processed with changes; 3 Declined. SQL has no CHECK constraint and permits NULL."
       ],
-      "source_name": "pvl_expenses_planed",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses_planned\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, name TEXT NOT NULL, description TEXT, date INTEGER, status INTEGER, id_currency INTEGER REFERENCES pvl_currencies (id))"
+      "source_name": "pvl_expenses_planned",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses_planned\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, name TEXT NOT NULL, description TEXT, date INTEGER, status INTEGER, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);"
     },
     {
       "name": "pvl_expenses_recurring",
-      "description": "Recurring expense definitions or entries; no explicit frequency rule is present in the schema.",
+      "description": "Recurring expense records linked to a required expense category and current account; recurrence frequency is not explicitly modeled.",
       "description_status": "inferred; editable",
       "columns": [
         {
@@ -1474,11 +3801,11 @@
         },
         {
           "name": "id_category",
-          "description": "Expense category, if recorded.",
+          "description": "Required expense-category reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -1491,11 +3818,11 @@
         },
         {
           "name": "id_account",
-          "description": "Associated current account, if recorded.",
+          "description": "Required current-account reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -1557,7 +3884,8 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         },
         {
           "columns": [
@@ -1570,15 +3898,16 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         }
       ],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_expenses_recurring\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id), id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, date INTEGER)",
+      "source_create_sql": "CREATE TABLE \"pvl_expenses_recurring\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id) NOT NULL, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, date INTEGER);",
       "additional_notes": [],
       "source_name": "pvl_expenses_recurring",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses_recurring\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id), id_account INTEGER REFERENCES pvl_accounts_current (id), amount REAL, date INTEGER)"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses_recurring\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id) NOT NULL, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, date INTEGER);"
     },
     {
       "name": "pvl_plugins",
@@ -1659,15 +3988,15 @@
       "foreign_keys": [],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE pvl_plugins (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, enabled INTEGER, path TEXT)",
+      "source_create_sql": "CREATE TABLE pvl_plugins (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, enabled INTEGER, path TEXT);",
       "additional_notes": [],
       "source_name": "pvl_plugins",
-      "target_create_sql_sqlite": "CREATE TABLE pvl_plugins (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, enabled INTEGER, path TEXT)"
+      "target_create_sql_sqlite": "CREATE TABLE pvl_plugins (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, enabled INTEGER, path TEXT);"
     },
     {
       "name": "pvl_settings",
-      "description": "Application or instance settings, including default currency and interface configuration.",
-      "description_status": "inferred; editable",
+      "description": "Singleton application settings: one row after initial setup; stores schema-version tracking, instance identity, localization, and other application preferences.",
+      "description_status": "user-specified semantics; editable",
       "columns": [
         {
           "name": "id",
@@ -1685,8 +4014,8 @@
         },
         {
           "name": "db_version",
-          "description": "Database version string.",
-          "description_status": "inferred",
+          "description": "Current database schema version as text; read by the application to determine whether upgrade/migration scripts are required.",
+          "description_status": "user-specified",
           "source_declared_type": "TEXT",
           "logical_type": "text",
           "nullable": true,
@@ -1699,8 +4028,8 @@
         },
         {
           "name": "instance_name",
-          "description": "Application instance name.",
-          "description_status": "inferred",
+          "description": "User-customizable instance display name; initially unset/blank (exact NULL versus empty-string convention not specified).",
+          "description_status": "user-specified",
           "source_declared_type": "TEXT",
           "logical_type": "text",
           "nullable": true,
@@ -1713,8 +4042,8 @@
         },
         {
           "name": "lang",
-          "description": "Language or locale identifier.",
-          "description_status": "inferred",
+          "description": "Current application language/locale; configured during first-run setup.",
+          "description_status": "user-specified",
           "source_declared_type": "TEXT",
           "logical_type": "text",
           "nullable": true,
@@ -1797,20 +4126,24 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": false
         }
       ],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_settings\" (id INTEGER PRIMARY KEY, db_version TEXT, instance_name TEXT, lang TEXT, default_currency INTEGER REFERENCES pvl_currencies (id), demo_mode INTEGER, theme TEXT)",
-      "additional_notes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_settings\" (id INTEGER PRIMARY KEY, db_version TEXT, instance_name TEXT, lang TEXT, default_currency INTEGER REFERENCES pvl_currencies (id), demo_mode INTEGER, theme TEXT);",
+      "additional_notes": [
+        "Application invariant: pvl_settings must contain exactly one row after initialization. The SQL does not enforce a maximum of one row and provides no initial row; application bootstrap must create one.",
+        "The initial instance_name is unspecified/empty; UI may customize it. The first run configures lang; db_version is used to select migration scripts on upgrades."
+      ],
       "source_name": "pvl_settings",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_settings\" (id INTEGER PRIMARY KEY, db_version TEXT, instance_name TEXT, lang TEXT, default_currency INTEGER REFERENCES pvl_currencies (id), demo_mode INTEGER, theme TEXT)"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_settings\" (id INTEGER PRIMARY KEY, db_version TEXT, instance_name TEXT, lang TEXT, default_currency INTEGER REFERENCES pvl_currencies (id), demo_mode INTEGER, theme TEXT);"
     },
     {
       "name": "pvl_taxes",
-      "description": "Tax records optionally associated with a current account.",
-      "description_status": "inferred; editable",
+      "description": "Tax records linked to a required current account; amount is the tax amount.",
+      "description_status": "user-specified semantics; editable",
       "columns": [
         {
           "name": "id",
@@ -1828,11 +4161,11 @@
         },
         {
           "name": "id_account",
-          "description": "Associated current account, if recorded.",
+          "description": "Required current-account reference.",
           "description_status": "inferred",
           "source_declared_type": "INTEGER",
           "logical_type": "integer",
-          "nullable": true,
+          "nullable": false,
           "primary_key": false,
           "autoincrement_keyword": false,
           "unique": false,
@@ -1859,8 +4192,8 @@
         },
         {
           "name": "amount",
-          "description": "Tax amount.",
-          "description_status": "inferred",
+          "description": "Tax amount for this tax entry.",
+          "description_status": "user-specified",
           "source_declared_type": "REAL",
           "logical_type": "floating_point",
           "nullable": true,
@@ -1922,20 +4255,113 @@
           "on_update": "NO ACTION",
           "on_delete": "NO ACTION",
           "name": null,
-          "source_defined": true
+          "source_defined": true,
+          "required": true
         }
       ],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_taxes\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), name TEXT, amount REAL, description TEXT, date INTEGER)",
+      "source_create_sql": "CREATE TABLE \"pvl_taxes\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, name TEXT, amount REAL, description TEXT, date INTEGER);",
       "additional_notes": [],
       "source_name": "pvl_taxes",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_taxes\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id), name TEXT, amount REAL, description TEXT, date INTEGER)"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_taxes\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, name TEXT, amount REAL, description TEXT, date INTEGER);"
+    },
+    {
+      "name": "pvl_user_roles",
+      "description": "Available application roles, initialized with Administrator, Read/Write, and Viewer. User-role assignments are mandatory; specific permission rules remain future work.",
+      "description_status": "source seed data + user-specified role requirement",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Unique identifier of a user role.",
+          "description_status": "inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "description": "Required role name or label; uniqueness is not enforced.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        },
+        {
+          "name": "description",
+          "description": "Optional description of the user role or its intended purpose.",
+          "description_status": "inferred",
+          "source_declared_type": "TEXT",
+          "logical_type": "text",
+          "nullable": true,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "TEXT"
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_user_roles\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT);",
+      "additional_notes": [
+        "Every pvl_users row must have a role. Role privilege definitions and permissions enforcement remain outside the current SQL.",
+        "Three default roles with fixed IDs: 1 Administrator, 2 Read/Write, 3 Viewer. Defined permissions are not yet included in SQL."
+      ],
+      "source_name": "pvl_user_roles",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_user_roles\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT);",
+      "seed_data": {
+        "source": "pvledger(3).sql",
+        "kind": "default_reference_data",
+        "columns": [
+          "id",
+          "name",
+          "description"
+        ],
+        "rows": [
+          [
+            1,
+            "Administrator",
+            ""
+          ],
+          [
+            2,
+            "Read/Write",
+            null
+          ],
+          [
+            3,
+            "Viewer",
+            null
+          ]
+        ],
+        "row_count": 3,
+        "preserve_explicit_ids": true,
+        "notes": "Embedded initial seed records, not column DEFAULT constraints; preserve Unicode text and SQL NULL precisely."
+      }
     },
     {
       "name": "pvl_users",
-      "description": "Application user records, including display information and authentication-related fields.",
-      "description_status": "inferred; editable",
+      "description": "Application user identities and required roles. The first user is created during first-run setup; password hashes use SHA-256 by application convention.",
+      "description_status": "user-specified semantics; editable",
       "columns": [
         {
           "name": "id",
@@ -2033,8 +4459,8 @@
         },
         {
           "name": "password",
-          "description": "MD5 password digest represented as 32 hexadecimal characters; existing nullable TEXT column retained.",
-          "description_status": "confirmed by user (security warning applies)",
+          "description": "SHA-256 password digest, stored as 64 hexadecimal characters by application convention; TEXT remains nullable and has no length/format CHECK.",
+          "description_status": "user-specified",
           "source_declared_type": "TEXT",
           "logical_type": "md5_hex_digest",
           "nullable": true,
@@ -2049,6 +4475,23 @@
             "representation": "32 hexadecimal characters",
             "salt_or_preprocessing": "not specified"
           }
+        },
+        {
+          "name": "id_role",
+          "description": "Required assigned user role; authorization permissions are not defined in the schema.",
+          "description_status": "relationship explicitly defined in uploaded SQL; business behavior pending",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_user_roles",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
         }
       ],
       "primary_key": [
@@ -2062,71 +4505,102 @@
           ]
         }
       ],
-      "foreign_keys": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_role"
+          ],
+          "referenced_table": "pvl_user_roles",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true,
+          "required": true
+        }
+      ],
       "check_constraints": [],
       "explicit_indexes": [],
-      "source_create_sql": "CREATE TABLE \"pvl_users\" (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, firstname TEXT, lastname TEXT, displayname TEXT, is_admin INTEGER, password TEXT)",
-      "additional_notes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_users\" (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, firstname TEXT, lastname TEXT, displayname TEXT, is_admin INTEGER, password TEXT, id_role INTEGER REFERENCES pvl_user_roles (id) NOT NULL);",
+      "additional_notes": [
+        "pvl_users.id_role is NOT NULL: every user row must reference an existing pvl_user_roles.id when foreign keys are enforced.",
+        "Role association is required; role permissions and enforcement are not yet defined in the SQL.",
+        "No users are seeded; the first user account is created during first application run and must reference an existing pvl_user_roles row.",
+        "SHA-256 is a fast hash and not suitable by itself for secure password storage; consider a slow, salted password-hashing scheme for production."
+      ],
       "source_name": "pvl_users",
-      "target_create_sql_sqlite": "CREATE TABLE \"pvl_users\" (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, firstname TEXT, lastname TEXT, displayname TEXT, is_admin INTEGER, password TEXT)"
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_users\" (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, firstname TEXT, lastname TEXT, displayname TEXT, is_admin INTEGER, password TEXT, id_role INTEGER REFERENCES pvl_user_roles (id) NOT NULL);"
     }
   ],
   "assumptions_and_open_questions": [
-    "Confirm/replace inferred functional descriptions and define interest, balances, amounts and billing-date business semantics.",
-    "Unix timestamps use integer seconds since the UTC epoch as the draft convention; confirm unit seconds versus milliseconds. All target date and billing_date columns are INTEGER.",
-    "Application-defined integer states (examples 1,2,3) have no enum map or SQL CHECK constraints yet; define their meanings in the application.",
-    "pvl_access_rights is a placeholder; future authorization table relationships remain undecided.",
-    "The target table pvl_expenses_planned corrects the original pvl_expenses_planed; decide how to migrate any existing database, views, and application queries.",
-    "Password storage is user-specified as MD5 hashes. MD5 is unsuitable for secure password storage; prefer Argon2id/scrypt/bcrypt for new deployments and plan a migration.",
-    "Decide whether to migrate financial REAL fields to fixed-precision DECIMAL/NUMERIC(p,s).",
-    "Define username size, case sensitivity and NULL behavior; source unique rule permits NULL.",
-    "Decide whether pvl_settings should be a singleton; source allows multiple rows.",
-    "Define country ISO standard, currency identifiers and any uniqueness constraints.",
-    "Define recurrence rules for pvl_expenses_recurring (frequency/next-run logic not in database).",
-    "Define FK on-update/on-delete behavior if default NO ACTION is not desired.",
-    "Decide indexes for referencing FK columns and common access patterns."
+    "Interest and billing_date calculation conventions remain unspecified; billing_date uses INTEGER UTC Unix epoch seconds as a draft convention.",
+    "Planned-expense status codes 0–3 are application-defined; source SQL allows NULL and any other INTEGER, with no CHECK constraint.",
+    "Other state-code fields (pvl_plugins.enabled, pvl_settings.demo_mode, pvl_users.is_admin) still need application code mappings.",
+    "Role privileges and permission enforcement are not defined by the current schema; users must reference a role.",
+    "pvl_settings should contain exactly one row following first-run setup; its singleton invariant is not enforced by SQL (source seeds zero rows).",
+    "Define whether initially blank instance_name means SQL NULL or the empty string, and define the lang value format (e.g. BCP 47).",
+    "Define db_version string scheme and migration script registry/ordering; do not confuse application/database version with spec document version.",
+    "First user is created on first run; no account is seeded. Define signup/bootstrap policy, username validation and initial role selection.",
+    "SHA-256 is user-selected, but a fast unsalted digest is unsafe for password authentication; consider migrating to Argon2id, scrypt, or bcrypt.",
+    "Financial amounts are SQLite REAL; use fixed-precision values in a separately approved change if financial correctness requires it.",
+    "Source currency ISO column is nullable even though all seed codes are present; SQLite UNIQUE index allows multiple NULLs.",
+    "The country ISO code has no UNIQUE constraint, despite seeded values being distinct.",
+    "Imported country/currency names are preserved as supplied; multilingual name variants and special-purpose codes may need separate localization records.",
+    "SQLite requires PRAGMA foreign_keys=ON on application connections; FK ON DELETE/UPDATE actions default to NO ACTION.",
+    "Specify recurrence rules for pvl_expenses_recurring and date/amount update workflows."
   ],
   "cross_database_mapping": {
     "sqlite": {
       "INTEGER": "INTEGER (64-bit integer values supported)",
       "TEXT": "TEXT",
       "REAL": "REAL",
-      "NUMERIC": "Only found in original SQL for pvl_expenses.date; target is INTEGER",
+      "NUMERIC": "Not used as a declared type in current SQL; date fields are INTEGER.",
       "identity": "INTEGER PRIMARY KEY; AUTOINCREMENT where present in source",
       "unix_timestamps": "INTEGER, epoch seconds in UTC",
       "application_integer_codes": "INTEGER with values assigned and interpreted by application; no CHECK constraint",
-      "md5_password_digest": "TEXT (convention: 32 hexadecimal characters; no CHECK constraint)"
+      "sha256_password_digest": "TEXT containing 64-character hex digest by application convention (not SQL-validated)",
+      "currency_iso_unique": "Preserve unique index on pvl_currencies.iso; nullable codes remain permitted",
+      "seed_data": "Insert 430 Unicode seed records preserving explicit IDs and NULLs; advance auto-generated identity/sequence after inserts when needed"
     },
     "postgresql": {
       "INTEGER": "BIGINT to preserve the possible 64-bit integer range of SQLite",
       "TEXT": "TEXT or validated VARCHAR(n)",
       "REAL": "DOUBLE PRECISION",
-      "NUMERIC": "Not needed for the target timestamp columns",
+      "NUMERIC": "Not used for date fields; all source timestamps are SQLite INTEGER.",
       "identity": "BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY except settings unless separately decided",
       "unix_timestamps": "BIGINT, epoch seconds in UTC (do not implicitly convert to TIMESTAMP)",
       "application_integer_codes": "INTEGER or BIGINT (consistent with selected range), not BOOLEAN",
-      "md5_password_digest": "TEXT or VARCHAR(32); MD5 is insecure for password storage"
+      "sha256_password_digest": "TEXT or VARCHAR(64); not suitable as standalone secure password hashing",
+      "currency_iso_unique": "Preserve unique index on pvl_currencies.iso; nullable codes remain permitted",
+      "seed_data": "Insert 430 Unicode seed records preserving explicit IDs and NULLs; advance auto-generated identity/sequence after inserts when needed"
     },
     "mysql_mariadb": {
       "INTEGER": "BIGINT to preserve the possible 64-bit integer range of SQLite",
       "TEXT": "TEXT; use suitable VARCHAR(n) for uniquely indexed username",
       "REAL": "DOUBLE",
-      "NUMERIC": "Not needed for the target timestamp columns",
+      "NUMERIC": "Not used for date fields; all source timestamps are SQLite INTEGER.",
       "identity": "BIGINT AUTO_INCREMENT PRIMARY KEY except settings unless separately decided",
       "unix_timestamps": "BIGINT, epoch seconds in UTC (avoid implicit TIMESTAMP range/timezone conversions)",
       "application_integer_codes": "INT or BIGINT, not BOOLEAN/TINYINT(1) shorthand",
-      "md5_password_digest": "VARCHAR(32) or TEXT; MD5 is insecure for password storage"
+      "sha256_password_digest": "VARCHAR(64) or TEXT; not suitable as standalone secure password hashing",
+      "currency_iso_unique": "Preserve unique index on pvl_currencies.iso; nullable codes remain permitted",
+      "seed_data": "Insert 430 Unicode seed records preserving explicit IDs and NULLs; advance auto-generated identity/sequence after inserts when needed"
     }
   },
   "revision": {
-    "from": "0.1-draft",
-    "date": "2026-11-21",
+    "from": "0.4-draft",
+    "date": "2026-11-22",
+    "source_file": "pvledger(3).sql",
     "changes": [
-      "All date and billing_date fields use 64-bit-compatible INTEGER Unix timestamps in the target schema (seconds since 1970-01-01T00:00:00Z used as the draft unit).",
-      "Application-defined integer codes, e.g. 1, 2, 3, are retained for status and state/flag fields; no DB-level enum or boolean coercion.",
-      "Access control remains a placeholder, without inferred relationships.",
-      "Corrected pvl_expenses_planed to pvl_expenses_planned in the target schema; source name retained for provenance and migrations.",
-      "pvl_users.password will contain an MD5 hash in hexadecimal form; security warning documented."
+      "Added pvl_currencies.iso TEXT (nullable) and standalone unique index ux_pvl_currencies_iso; 97 columns and 1 explicit index total.",
+      "Imported all built-in default data: 249 countries, 178 currencies and 3 user roles (430 rows); explicit IDs and Unicode names are preserved.",
+      "Changed pvl_users.password documentation from MD5 to SHA-256 digest (64 hexadecimal characters); SQL column remains nullable TEXT.",
+      "Specified amount semantics: credit outstanding debt, current/checking and savings funds balances, debts outstanding balance, and taxes tax amount.",
+      "Defined planned expense status codes 0 Planned, 1 Processed, 2 Processed with changes, 3 Declined; no SQL CHECK added.",
+      "Defined pvl_settings as one-row application singleton with schema migration db_version, editable instance_name and first-run lang.",
+      "Specified first user is created on first application run; no default users/settings rows in source SQL."
     ]
   },
   "design_decisions": {
@@ -2138,7 +4612,7 @@
       "timezone": "UTC",
       "unit_status": "draft convention; confirm seconds rather than milliseconds if application differs",
       "scope": "All date and billing_date columns",
-      "nullability": "Unchanged from source SQL",
+      "nullability": "All date and billing_date fields remain nullable as defined in source SQL.",
       "notes": "Unix timestamps represent instants in UTC. If billing_date is actually intended as a day of month rather than an instant, its business semantics will need separate review."
     },
     "state_code_storage": {
@@ -2151,41 +4625,202 @@
         "pvl_users.is_admin"
       ],
       "sample_values": [
+        0,
         1,
         2,
         3
       ],
-      "code_to_meaning_map": null,
+      "code_to_meaning_map": {
+        "pvl_expenses_planned.status": {
+          "0": "Planned",
+          "1": "Processed",
+          "2": "Processed with changes",
+          "3": "Declined"
+        }
+      },
       "meaning_owner": "application",
       "db_check_constraint": false,
-      "notes": "The source names may suggest booleans, but they are integer codes, not restricted to TRUE/FALSE or 0/1. Examples are not an exhaustive allowed-value list."
+      "notes": "Planned expense status codes are now defined by the application. Other integer-coded fields remain application-specific with no fixed mapping in this specification; SQL provides no CHECK."
     },
     "access_control": {
-      "status": "placeholder",
-      "table": "pvl_access_rights",
-      "link_to_users": null,
-      "future_work": "Model authorization, roles and user associations later; do not add FKs now."
+      "status": "role assignment required; permission enforcement deferred",
+      "roles_table": "pvl_user_roles",
+      "role_primary_key": "id",
+      "user_role_reference": "pvl_users.id_role INTEGER NOT NULL -> pvl_user_roles.id",
+      "assignment_required": true,
+      "permissions_tables": [],
+      "role_permissions_mapping": null,
+      "role_semantics": "not yet defined by SQL",
+      "former_placeholder": "pvl_access_rights existed in v0.2 and is absent from latest source SQL",
+      "future_work": "Define role capabilities and permission enforcement in the application; every new user must be assigned a role."
     },
     "naming": {
-      "renamed_tables": [
+      "renamed_tables_in_current_source": [],
+      "historical_corrections": [
         {
-          "source_name": "pvl_expenses_planed",
-          "target_name": "pvl_expenses_planned",
-          "reason": "Correct English spelling of planned"
+          "historical_name": "pvl_expenses_planed",
+          "current_name": "pvl_expenses_planned",
+          "reason": "Earlier spelling correction is already present in latest SQL"
         }
       ],
-      "other_identifier_names": "Retained as defined by source; id_countries is awkward grammar but not a spelling error, so no silent rename."
+      "other_identifier_names": "Identifiers retained exactly as written in the latest uploaded SQL. No silent renaming."
     },
     "password_storage": {
       "table": "pvl_users",
       "column": "password",
-      "algorithm": "MD5",
-      "representation": "32-character hexadecimal digest",
+      "algorithm": "SHA-256",
+      "representation": "64-character hexadecimal digest",
       "target_sql_type": "TEXT",
       "salt_or_preprocessing": "not specified",
-      "security_warning": "MD5 is unsuitable for password storage: it is fast and vulnerable to offline guessing. New systems should prefer Argon2id, scrypt or bcrypt; document a future migration path.",
+      "security_warning": "Plain/fast SHA-256 is not adequate for password storage because offline password guessing is inexpensive. Prefer Argon2id, scrypt or bcrypt with unique salts when possible.",
       "nullable": "Preserve nullable source column",
-      "database_length_constraint": false
+      "database_length_constraint": false,
+      "source_of_convention": "User-specified application convention; not enforced by SQL"
+    },
+    "financial_amount_semantics": {
+      "pvl_accounts_credit.amount": "remaining outstanding debt owed on credit account",
+      "pvl_accounts_current.amount": "current funds balance (current/checking account)",
+      "pvl_accounts_savings.amount": "current funds balance (savings account)",
+      "pvl_debts.amount": "current outstanding debt",
+      "pvl_taxes.amount": "tax amount",
+      "storage": "REAL retained as in SQL; financial precision choice deferred"
+    },
+    "settings_singleton": {
+      "table": "pvl_settings",
+      "expected_rows_after_first_run": 1,
+      "seed_rows": 0,
+      "enforcement": "application initialization and updates; not enforced by SQL",
+      "columns": {
+        "db_version": "current schema version; application reads this to choose/check required migration scripts",
+        "instance_name": "customizable by user via UI; initially not set (NULL versus empty text unspecified)",
+        "lang": "current application language; configured on first run"
+      },
+      "initialization": "On first run create exactly one settings record, set lang, and maintain db_version during upgrades. SQL does not assign a fixed settings ID or default schema version."
+    },
+    "user_bootstrap": {
+      "table": "pvl_users",
+      "seed_rows": 0,
+      "first_user_creation": "first application run",
+      "role_requirement": "id_role NOT NULL; must reference one of the seeded roles (or later application-defined role)"
+    },
+    "reference_data": {
+      "country_code": "ISO 3166-1 alpha-2; required but not enforced unique",
+      "currency_code": "ISO 4217; nullable TEXT, unique standalone index",
+      "preserve_seed_ids": true,
+      "language": "Preserve exact UTF-8 strings supplied in pvledger(3).sql",
+      "seed_counts": {
+        "pvl_countries": 249,
+        "pvl_currencies": 178,
+        "pvl_user_roles": 3
+      }
     }
+  },
+  "source_history": [
+    {
+      "file": "pvledger.sql",
+      "role": "earlier baseline before spelling and date-type updates"
+    },
+    {
+      "file": "pvledger(1).sql",
+      "role": "authoritative source for specification 0.3-draft"
+    },
+    {
+      "file": "pvledger(2).sql",
+      "role": "authoritative source for specification 0.4-draft; 20 additional foreign-key NOT NULL constraints"
+    },
+    {
+      "file": "pvledger(3).sql",
+      "role": "authoritative source for v0.5-draft; default data + currency ISO/index"
+    }
+  ],
+  "revision_history": [
+    {
+      "from": "0.1-draft",
+      "date": "2026-11-21",
+      "changes": [
+        "All date and billing_date fields use 64-bit-compatible INTEGER Unix timestamps in the target schema (seconds since 1970-01-01T00:00:00Z used as the draft unit).",
+        "Application-defined integer codes, e.g. 1, 2, 3, are retained for status and state/flag fields; no DB-level enum or boolean coercion.",
+        "Access control remains a placeholder, without inferred relationships.",
+        "Corrected pvl_expenses_planed to pvl_expenses_planned in the target schema; source name retained for provenance and migrations.",
+        "pvl_users.password will contain an MD5 hash in hexadecimal form; security warning documented."
+      ]
+    },
+    {
+      "from": "0.2-draft",
+      "date": "2026-11-21",
+      "source_file": "pvledger(1).sql",
+      "changes": [
+        "Removed pvl_access_rights because it is absent from the new SQL.",
+        "Added pvl_user_roles with id, name and description; its business description is inferred and editable.",
+        "Added nullable pvl_users.id_role INTEGER REFERENCES pvl_user_roles(id).",
+        "Updated relationship counts from 21 to 22 and column count from 95 to 96; total tables remain 16.",
+        "Current SQL already uses pvl_expenses_planned and pvl_expenses.date INTEGER, matching prior design decisions.",
+        "Preserved unix timestamp, application integer code, MD5 password format, and portable type-mapping decisions."
+      ]
+    },
+    {
+      "from": "0.3-draft",
+      "date": "2026-11-21",
+      "source_file": "pvledger(2).sql",
+      "changes": [
+        "Applied 20 new NOT NULL constraints on foreign-key columns in nine tables; no tables/columns/FKs were added or removed.",
+        "Required pvl_users.id_role: role assignment is no longer optional.",
+        "All other existing foreign keys except pvl_settings.default_currency are mandatory (21 required, 1 optional).",
+        "Updated column and table descriptions, relationship cardinalities, and migration cautions to reflect required references.",
+        "Preserved timestamps as INTEGER Unix time, application-defined numeric state codes, user-selected MD5 digest convention, and financial REAL types."
+      ]
+    },
+    {
+      "from": "0.4-draft",
+      "date": "2026-11-22",
+      "source_file": "pvledger(3).sql",
+      "changes": [
+        "Added pvl_currencies.iso TEXT (nullable) and standalone unique index ux_pvl_currencies_iso; 97 columns and 1 explicit index total.",
+        "Imported all built-in default data: 249 countries, 178 currencies and 3 user roles (430 rows); explicit IDs and Unicode names are preserved.",
+        "Changed pvl_users.password documentation from MD5 to SHA-256 digest (64 hexadecimal characters); SQL column remains nullable TEXT.",
+        "Specified amount semantics: credit outstanding debt, current/checking and savings funds balances, debts outstanding balance, and taxes tax amount.",
+        "Defined planned expense status codes 0 Planned, 1 Processed, 2 Processed with changes, 3 Declined; no SQL CHECK added.",
+        "Defined pvl_settings as one-row application singleton with schema migration db_version, editable instance_name and first-run lang.",
+        "Specified first user is created on first application run; no default users/settings rows in source SQL."
+      ]
+    }
+  ],
+  "schema_counts": {
+    "tables": 16,
+    "columns": 97,
+    "foreign_keys": 22,
+    "single_column_primary_keys": 16,
+    "additional_unique_constraints": 1,
+    "explicit_secondary_indexes": 1,
+    "views": 0,
+    "triggers": 0,
+    "required_foreign_keys": 21,
+    "optional_foreign_keys": 1,
+    "columns_not_null_excluding_primary_keys": 33,
+    "seed_records": 430
+  },
+  "seed_data_summary": {
+    "source": "pvledger(3).sql",
+    "total_rows": 430,
+    "seed_tables": [
+      {
+        "table": "pvl_countries",
+        "rows": 249,
+        "primary_keys_explicit": true
+      },
+      {
+        "table": "pvl_currencies",
+        "rows": 178,
+        "primary_keys_explicit": true
+      },
+      {
+        "table": "pvl_user_roles",
+        "rows": 3,
+        "primary_keys_explicit": true
+      }
+    ],
+    "other_tables_have_no_seed_rows": true,
+    "semantics": "These are explicit INSERT rows, not column DEFAULT expressions, and therefore belong to the initialized dataset, not the DDL alone.",
+    "migration_note": "Seed scripts are for fresh instance setup; do not overwrite user-edited reference data or reset existing databases without a designed migration."
   }
 }
