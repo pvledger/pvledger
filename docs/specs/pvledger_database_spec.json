@@ -1,13 +1,234 @@
 {
   "title": "PVLedger database specification — draft, portable schema contract",
-  "specification_version": "0.5-draft",
-  "status": "Draft synchronized to pvledger(3).sql, including 430 seed rows and user-specified application semantics.",
-  "source_file": "pvledger(3).sql",
+  "specification_version": "0.6.1-draft",
+  "status": "Draft v0.6.1; both account-history id_account columns confirmed NOT NULL in the latest uploaded pvledger(6).sql. Schema and all 430 seed rows validated.",
+  "source_file": "pvledger(6).sql",
   "source_dialect": "SQLite",
   "table_prefix": "pvl_",
-  "scope": "Current SQLite schema, seeded default reference data (full rows + stable IDs), user-specified behavioral rules, cross-engine mapping and editable descriptions.",
-  "database_description": "PVLedger personal-finance storage for accounts, expenses, taxes, debts, localized country and currency catalogs, user accounts, roles and singleton instance settings.",
+  "scope": "Corrected SQLite schema, required account-linked historical balance tables, 430 seeded reference records, application rules, cross-engine mappings and editable descriptions.",
+  "database_description": "PVLedger personal-finance storage including dated balance snapshots for current/checking and savings accounts, users and roles, accounts, expenses, debts, taxes, plugins, instance settings and localized reference data.",
   "tables": [
+    {
+      "name": "pvl_account_history_current",
+      "description": "Historical snapshots of the amount of funds held in a current/checking account at a recorded Unix timestamp.",
+      "description_status": "user-specified purpose; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Unique historical balance record identifier.",
+          "description_status": "inferred from source SQL",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_account",
+          "description": "Required reference to the current/checking account whose historical balance is recorded.",
+          "description_status": "user-confirmed NOT NULL correction to v0.6 source",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_accounts_current",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "date",
+          "description": "Timestamp when this account balance was recorded; application convention: Unix epoch seconds in UTC.",
+          "description_status": "user-specified history purpose; field semantics inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "unix_timestamp",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "unit": "seconds",
+            "epoch": "1970-01-01T00:00:00Z",
+            "timezone": "UTC",
+            "unit_status": "draft convention (SQL affinity does not enforce units)"
+          }
+        },
+        {
+          "name": "amount",
+          "description": "Account funds balance at the recorded timestamp, denominated in the currency of the linked account; historical amount, not the live balance.",
+          "description_status": "user-specified history purpose; field semantics inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL",
+          "value_semantics": {
+            "unit": "linked account currency",
+            "meaning": "account balance at date",
+            "date_snapshot_rule": "not defined by source SQL",
+            "storage_precision": "SQLite REAL"
+          }
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_account"
+          ],
+          "referenced_table": "pvl_accounts_current",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true,
+          "required": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE \"pvl_account_history_current\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, date INTEGER NOT NULL, amount REAL NOT NULL);",
+      "additional_notes": [
+        "Stores dated account-balance snapshots, not individual account transactions.",
+        "date and amount are NOT NULL; the foreign-key account reference is NOT NULL.",
+        "No UNIQUE (id_account, date) constraint or supporting (id_account, date) index is declared; duplicate timestamps are allowed.",
+        "The schema does not automatically synchronize snapshots with the live parent-account amount.",
+        "The snapshot currency is inferred through the associated account; no separate currency column exists.",
+        "Confirmed by the latest uploaded pvledger(6).sql: id_account is NOT NULL."
+      ],
+      "source_name": "pvl_account_history_current",
+      "target_create_sql_sqlite": "CREATE TABLE \"pvl_account_history_current\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, date INTEGER NOT NULL, amount REAL NOT NULL);"
+    },
+    {
+      "name": "pvl_account_history_savings",
+      "description": "Historical snapshots of the amount of funds held in a savings account at a recorded Unix timestamp.",
+      "description_status": "user-specified purpose; editable",
+      "columns": [
+        {
+          "name": "id",
+          "description": "Unique historical balance record identifier.",
+          "description_status": "inferred from source SQL",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": true,
+          "autoincrement_keyword": true,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "id_account",
+          "description": "Required reference to the savings account whose balance is recorded.",
+          "description_status": "inferred from source SQL",
+          "source_declared_type": "INTEGER",
+          "logical_type": "integer",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": {
+            "table": "pvl_accounts_savings",
+            "column": "id"
+          },
+          "target_sqlite_type": "INTEGER"
+        },
+        {
+          "name": "date",
+          "description": "Timestamp when this account balance was recorded; application convention: Unix epoch seconds in UTC.",
+          "description_status": "user-specified history purpose; field semantics inferred",
+          "source_declared_type": "INTEGER",
+          "logical_type": "unix_timestamp",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "INTEGER",
+          "value_semantics": {
+            "unit": "seconds",
+            "epoch": "1970-01-01T00:00:00Z",
+            "timezone": "UTC",
+            "unit_status": "draft convention (SQL affinity does not enforce units)"
+          }
+        },
+        {
+          "name": "amount",
+          "description": "Account funds balance at the recorded timestamp, denominated in the currency of the linked account; historical amount, not the live balance.",
+          "description_status": "user-specified history purpose; field semantics inferred",
+          "source_declared_type": "REAL",
+          "logical_type": "floating_point",
+          "nullable": false,
+          "primary_key": false,
+          "autoincrement_keyword": false,
+          "unique": false,
+          "default_sql": null,
+          "references": null,
+          "target_sqlite_type": "REAL",
+          "value_semantics": {
+            "unit": "linked account currency",
+            "meaning": "account balance at date",
+            "date_snapshot_rule": "not defined by source SQL",
+            "storage_precision": "SQLite REAL"
+          }
+        }
+      ],
+      "primary_key": [
+        "id"
+      ],
+      "unique_constraints": [],
+      "foreign_keys": [
+        {
+          "columns": [
+            "id_account"
+          ],
+          "referenced_table": "pvl_accounts_savings",
+          "referenced_columns": [
+            "id"
+          ],
+          "on_update": "NO ACTION",
+          "on_delete": "NO ACTION",
+          "name": null,
+          "source_defined": true,
+          "required": true
+        }
+      ],
+      "check_constraints": [],
+      "explicit_indexes": [],
+      "source_create_sql": "CREATE TABLE pvl_account_history_savings (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_savings (id) NOT NULL, date INTEGER NOT NULL, amount REAL NOT NULL);",
+      "additional_notes": [
+        "Stores dated account-balance snapshots, not individual account transactions.",
+        "date and amount are NOT NULL; the foreign-key account reference is NOT NULL.",
+        "No UNIQUE (id_account, date) constraint or supporting (id_account, date) index is declared; duplicate timestamps are allowed.",
+        "The schema does not automatically synchronize snapshots with the live parent-account amount.",
+        "The snapshot currency is inferred through the associated account; no separate currency column exists."
+      ],
+      "source_name": "pvl_account_history_savings",
+      "target_create_sql_sqlite": "CREATE TABLE pvl_account_history_savings (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_savings (id) NOT NULL, date INTEGER NOT NULL, amount REAL NOT NULL);"
+    },
     {
       "name": "pvl_accounts_credit",
       "description": "Credit accounts; amount is the remaining debt (outstanding balance) owed on the credit account.",
@@ -765,7 +986,7 @@
       "source_name": "pvl_countries",
       "target_create_sql_sqlite": "CREATE TABLE \"pvl_countries\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, iso TEXT NOT NULL);",
       "seed_data": {
-        "source": "pvledger(3).sql",
+        "source": "pvledger(6).sql (confirmed latest source)",
         "kind": "default_reference_data",
         "columns": [
           "id",
@@ -2111,7 +2332,7 @@
       "source_name": "pvl_currencies",
       "target_create_sql_sqlite": "CREATE TABLE \"pvl_currencies\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, iso TEXT);",
       "seed_data": {
-        "source": "pvledger(3).sql",
+        "source": "pvledger(6).sql (confirmed latest source)",
         "kind": "default_reference_data",
         "columns": [
           "id",
@@ -4329,7 +4550,7 @@
       "source_name": "pvl_user_roles",
       "target_create_sql_sqlite": "CREATE TABLE \"pvl_user_roles\" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT);",
       "seed_data": {
-        "source": "pvledger(3).sql",
+        "source": "pvledger(6).sql (confirmed latest source)",
         "kind": "default_reference_data",
         "columns": [
           "id",
@@ -4549,7 +4770,13 @@
     "The country ISO code has no UNIQUE constraint, despite seeded values being distinct.",
     "Imported country/currency names are preserved as supplied; multilingual name variants and special-purpose codes may need separate localization records.",
     "SQLite requires PRAGMA foreign_keys=ON on application connections; FK ON DELETE/UPDATE actions default to NO ACTION.",
-    "Specify recurrence rules for pvl_expenses_recurring and date/amount update workflows."
+    "Specify recurrence rules for pvl_expenses_recurring and date/amount update workflows.",
+    "History rows have no unique (id_account, date) constraint, so multiple snapshots per account per timestamp are allowed; decide application handling.",
+    "Define snapshot capture cadence (per change, daily closing, scheduled), timestamp/day boundaries, backdated edits and retention.",
+    "No history indexes on (id_account, date); add only with a future approved schema revision if needed.",
+    "No triggers synchronize live account amount with history. The application is responsible for consistency and account deletion behavior.",
+    "v0.6 initialization dropped DROP TABLE statements; seed INSERTs still use fixed IDs and will fail on rerun against an initialized database.",
+    "v0.6.1 requires historical current-account id_account NOT NULL. If migrating a populated v0.6 database, resolve any existing NULL account references before rebuilding the table."
   ],
   "cross_database_mapping": {
     "sqlite": {
@@ -4562,7 +4789,8 @@
       "application_integer_codes": "INTEGER with values assigned and interpreted by application; no CHECK constraint",
       "sha256_password_digest": "TEXT containing 64-character hex digest by application convention (not SQL-validated)",
       "currency_iso_unique": "Preserve unique index on pvl_currencies.iso; nullable codes remain permitted",
-      "seed_data": "Insert 430 Unicode seed records preserving explicit IDs and NULLs; advance auto-generated identity/sequence after inserts when needed"
+      "seed_data": "Insert 430 Unicode seed records preserving IDs and NULLs; one-time initialization, not idempotent; use migrations for subsequent updates.",
+      "historical_balance_snapshots": "Both history tables: date required INTEGER Unix seconds; amount required REAL; both current- and savings-history account FKs required. No uniqueness constraint on (id_account, date)."
     },
     "postgresql": {
       "INTEGER": "BIGINT to preserve the possible 64-bit integer range of SQLite",
@@ -4574,7 +4802,8 @@
       "application_integer_codes": "INTEGER or BIGINT (consistent with selected range), not BOOLEAN",
       "sha256_password_digest": "TEXT or VARCHAR(64); not suitable as standalone secure password hashing",
       "currency_iso_unique": "Preserve unique index on pvl_currencies.iso; nullable codes remain permitted",
-      "seed_data": "Insert 430 Unicode seed records preserving explicit IDs and NULLs; advance auto-generated identity/sequence after inserts when needed"
+      "seed_data": "Insert 430 Unicode seed records preserving IDs and NULLs; one-time initialization, not idempotent; use migrations for subsequent updates.",
+      "historical_balance_snapshots": "Both history tables: date required BIGINT Unix seconds; amount required DOUBLE PRECISION; both current- and savings-history account FKs required. No uniqueness constraint on (id_account, date)."
     },
     "mysql_mariadb": {
       "INTEGER": "BIGINT to preserve the possible 64-bit integer range of SQLite",
@@ -4586,21 +4815,20 @@
       "application_integer_codes": "INT or BIGINT, not BOOLEAN/TINYINT(1) shorthand",
       "sha256_password_digest": "VARCHAR(64) or TEXT; not suitable as standalone secure password hashing",
       "currency_iso_unique": "Preserve unique index on pvl_currencies.iso; nullable codes remain permitted",
-      "seed_data": "Insert 430 Unicode seed records preserving explicit IDs and NULLs; advance auto-generated identity/sequence after inserts when needed"
+      "seed_data": "Insert 430 Unicode seed records preserving IDs and NULLs; one-time initialization, not idempotent; use migrations for subsequent updates.",
+      "historical_balance_snapshots": "Both history tables: date required BIGINT Unix seconds; amount required DOUBLE; both current- and savings-history account FKs required. No uniqueness constraint on (id_account, date)."
     }
   },
   "revision": {
-    "from": "0.4-draft",
+    "from": "0.6-draft",
     "date": "2026-11-22",
-    "source_file": "pvledger(3).sql",
+    "source_file": "pvledger(6).sql",
     "changes": [
-      "Added pvl_currencies.iso TEXT (nullable) and standalone unique index ux_pvl_currencies_iso; 97 columns and 1 explicit index total.",
-      "Imported all built-in default data: 249 countries, 178 currencies and 3 user roles (430 rows); explicit IDs and Unicode names are preserved.",
-      "Changed pvl_users.password documentation from MD5 to SHA-256 digest (64 hexadecimal characters); SQL column remains nullable TEXT.",
-      "Specified amount semantics: credit outstanding debt, current/checking and savings funds balances, debts outstanding balance, and taxes tax amount.",
-      "Defined planned expense status codes 0 Planned, 1 Processed, 2 Processed with changes, 3 Declined; no SQL CHECK added.",
-      "Defined pvl_settings as one-row application singleton with schema migration db_version, editable instance_name and first-run lang.",
-      "Specified first user is created on first application run; no default users/settings rows in source SQL."
+      "Changed pvl_account_history_current.id_account from nullable to INTEGER NOT NULL while preserving its foreign key to pvl_accounts_current.id.",
+      "Both historical balance tables now require an account link; dates and amounts remain NOT NULL.",
+      "Required foreign keys increased from 22 to 23; optional foreign keys decreased from 2 to 1 (pvl_settings.default_currency).",
+      "No table, column, foreign key, index or seed-row additions/removals; source 430 seed rows retained verbatim.",
+      "Confirmed latest uploaded pvledger(6).sql already contains the required current-account history NOT NULL correction; it matches the v0.6.1 schema and seed data."
     ]
   },
   "design_decisions": {
@@ -4611,8 +4839,8 @@
       "epoch": "1970-01-01T00:00:00Z",
       "timezone": "UTC",
       "unit_status": "draft convention; confirm seconds rather than milliseconds if application differs",
-      "scope": "All date and billing_date columns",
-      "nullability": "All date and billing_date fields remain nullable as defined in source SQL.",
+      "scope": "All date and billing_date columns, including historical account-balance snapshots.",
+      "nullability": "Both historical date fields are NOT NULL; previous date and billing_date fields retain original nullability.",
       "notes": "Unix timestamps represent instants in UTC. If billing_date is actually intended as a day of month rather than an instant, its business semantics will need separate review."
     },
     "state_code_storage": {
@@ -4683,7 +4911,9 @@
       "pvl_accounts_savings.amount": "current funds balance (savings account)",
       "pvl_debts.amount": "current outstanding debt",
       "pvl_taxes.amount": "tax amount",
-      "storage": "REAL retained as in SQL; financial precision choice deferred"
+      "storage": "All account balances remain SQLite REAL; two historical amount columns are NOT NULL, existing financial amount columns retain original nullability.",
+      "pvl_account_history_current.amount": "current/checking account funds balance as captured at a specific historical timestamp (NOT NULL)",
+      "pvl_account_history_savings.amount": "savings account funds balance as captured at a specific historical timestamp (NOT NULL)"
     },
     "settings_singleton": {
       "table": "pvl_settings",
@@ -4707,12 +4937,33 @@
       "country_code": "ISO 3166-1 alpha-2; required but not enforced unique",
       "currency_code": "ISO 4217; nullable TEXT, unique standalone index",
       "preserve_seed_ids": true,
-      "language": "Preserve exact UTF-8 strings supplied in pvledger(3).sql",
+      "language": "Preserve exact UTF-8 strings supplied in pvledger(4).sql (unchanged from pvledger(3).sql)",
       "seed_counts": {
         "pvl_countries": 249,
         "pvl_currencies": 178,
         "pvl_user_roles": 3
       }
+    },
+    "historical_balance_snapshots": {
+      "purpose": "Record time-stamped funds balances for current/checking and savings accounts; not transactions or balance deltas.",
+      "tables": {
+        "pvl_account_history_current": {
+          "parent_table": "pvl_accounts_current",
+          "account_foreign_key_required": true
+        },
+        "pvl_account_history_savings": {
+          "parent_table": "pvl_accounts_savings",
+          "account_foreign_key_required": true
+        }
+      },
+      "date": "INTEGER NOT NULL Unix timestamp, UTC epoch seconds by draft convention",
+      "amount": "REAL NOT NULL; recorded account funds balance in the linked account currency",
+      "no_automatic_balance_sync": true,
+      "unique_per_account_and_timestamp": false,
+      "no_date_or_account_date_index_in_source": true,
+      "snapshot_cadence": "not specified",
+      "no_history_seed_rows": true,
+      "account_link_requirement": "Both account-history id_account columns require a valid parent record (NOT NULL plus foreign key enforcement)."
     }
   },
   "source_history": [
@@ -4731,6 +4982,18 @@
     {
       "file": "pvledger(3).sql",
       "role": "authoritative source for v0.5-draft; default data + currency ISO/index"
+    },
+    {
+      "file": "pvledger(4).sql",
+      "role": "authoritative source for v0.6-draft; two historical balance tables and non-destructive CREATE commands"
+    },
+    {
+      "file": "pvledger_corrected_v0.6.1.sql",
+      "role": "canonical derived v0.6.1 target; user-requested NOT NULL change from pvledger(4).sql"
+    },
+    {
+      "file": "pvledger(6).sql",
+      "role": "latest authoritative SQL uploaded by the user; confirms both historical id_account references are NOT NULL; schema and 430 seeds match v0.6.1"
     }
   ],
   "revision_history": [
@@ -4783,24 +5046,49 @@
         "Defined pvl_settings as one-row application singleton with schema migration db_version, editable instance_name and first-run lang.",
         "Specified first user is created on first application run; no default users/settings rows in source SQL."
       ]
+    },
+    {
+      "from": "0.5-draft",
+      "date": "2026-11-22",
+      "source_file": "pvledger(4).sql",
+      "changes": [
+        "Added pvl_account_history_current and pvl_account_history_savings, each with id, id_account, date and amount.",
+        "Historical balance date INTEGER NOT NULL and amount REAL NOT NULL represent a dated account funds balance, not a cash-flow delta.",
+        "Current-account history id_account is nullable; savings-account history id_account is NOT NULL as explicitly defined by SQL.",
+        "Added 2 new foreign keys: total 24 (22 required, 2 optional). No additional unique constraints or indexes were added.",
+        "Previous 16 tables, 97 columns, 22 foreign keys, 1 explicit index, and all 430 seed rows remain unchanged.",
+        "Removed all DROP TABLE/INDEX IF EXISTS statements from the initialization SQL; CREATE IF NOT EXISTS still creates missing tables, but fixed-ID seed INSERTs remain non-idempotent."
+      ]
+    },
+    {
+      "from": "0.6-draft",
+      "date": "2026-11-22",
+      "source_file": "pvledger(6).sql",
+      "changes": [
+        "Changed pvl_account_history_current.id_account from nullable to INTEGER NOT NULL while preserving its foreign key to pvl_accounts_current.id.",
+        "Both historical balance tables now require an account link; dates and amounts remain NOT NULL.",
+        "Required foreign keys increased from 22 to 23; optional foreign keys decreased from 2 to 1 (pvl_settings.default_currency).",
+        "No table, column, foreign key, index or seed-row additions/removals; source 430 seed rows retained verbatim.",
+        "Confirmed latest uploaded pvledger(6).sql already contains the required history link NOT NULL correction; it matches v0.6.1."
+      ]
     }
   ],
   "schema_counts": {
-    "tables": 16,
-    "columns": 97,
-    "foreign_keys": 22,
-    "single_column_primary_keys": 16,
+    "tables": 18,
+    "columns": 105,
+    "foreign_keys": 24,
+    "single_column_primary_keys": 18,
     "additional_unique_constraints": 1,
     "explicit_secondary_indexes": 1,
     "views": 0,
     "triggers": 0,
-    "required_foreign_keys": 21,
+    "required_foreign_keys": 23,
     "optional_foreign_keys": 1,
-    "columns_not_null_excluding_primary_keys": 33,
+    "columns_not_null_excluding_primary_keys": 39,
     "seed_records": 430
   },
   "seed_data_summary": {
-    "source": "pvledger(3).sql",
+    "source": "pvledger(6).sql; 430 rows retained from pvledger(3).sql",
     "total_rows": 430,
     "seed_tables": [
       {
@@ -4819,8 +5107,24 @@
         "primary_keys_explicit": true
       }
     ],
-    "other_tables_have_no_seed_rows": true,
+    "other_tables_have_no_seed_rows": [
+      "pvl_account_history_current",
+      "pvl_account_history_savings",
+      "pvl_accounts_credit",
+      "pvl_accounts_current",
+      "pvl_accounts_savings",
+      "pvl_banks",
+      "pvl_debts",
+      "pvl_expenses",
+      "pvl_expenses_categories",
+      "pvl_expenses_planned",
+      "pvl_expenses_recurring",
+      "pvl_plugins",
+      "pvl_settings",
+      "pvl_taxes",
+      "pvl_users"
+    ],
     "semantics": "These are explicit INSERT rows, not column DEFAULT expressions, and therefore belong to the initialized dataset, not the DDL alone.",
-    "migration_note": "Seed scripts are for fresh instance setup; do not overwrite user-edited reference data or reset existing databases without a designed migration."
+    "migration_note": "Full initialization SQL has no DROP statements but fixed primary-key seed INSERTs are not safely repeatable. On existing databases, apply additive history-table migration only."
   }
 }

@@ -1,29 +1,30 @@
 --
--- File generated with Letos v4.0.4 on Sun Nov 22 00:16:13 2026
+-- File generated with Letos v4.0.4 on Sun Nov 22 11:17:07 2026
 --
 -- Text encoding used: UTF-8
 --
 PRAGMA foreign_keys = off;
 BEGIN TRANSACTION;
 
+-- Table: pvl_account_history_current
+CREATE TABLE IF NOT EXISTS "pvl_account_history_current" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, date INTEGER NOT NULL, amount REAL NOT NULL);
+
+-- Table: pvl_account_history_savings
+CREATE TABLE IF NOT EXISTS pvl_account_history_savings (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_savings (id) NOT NULL, date INTEGER NOT NULL, amount REAL NOT NULL);
+
 -- Table: pvl_accounts_credit
-DROP TABLE IF EXISTS pvl_accounts_credit;
 CREATE TABLE IF NOT EXISTS "pvl_accounts_credit" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id) NOT NULL, id_user INTEGER REFERENCES pvl_users (id) NOT NULL, name TEXT NOT NULL, description TEXT, interest REAL, billing_date INTEGER, amount REAL, id_current_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);
 
 -- Table: pvl_accounts_current
-DROP TABLE IF EXISTS pvl_accounts_current;
 CREATE TABLE IF NOT EXISTS "pvl_accounts_current" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id) NOT NULL, name TEXT NOT NULL, amount REAL, description TEXT, id_user INTEGER REFERENCES pvl_users (id) NOT NULL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);
 
 -- Table: pvl_accounts_savings
-DROP TABLE IF EXISTS pvl_accounts_savings;
 CREATE TABLE IF NOT EXISTS "pvl_accounts_savings" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_bank INTEGER REFERENCES pvl_banks (id) NOT NULL, interest REAL, billing_date INTEGER, name TEXT NOT NULL, description TEXT, id_user INTEGER REFERENCES pvl_users (id) NOT NULL, amount REAL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);
 
 -- Table: pvl_banks
-DROP TABLE IF EXISTS pvl_banks;
 CREATE TABLE IF NOT EXISTS "pvl_banks" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_countries INTEGER REFERENCES pvl_countries (id) NOT NULL);
 
 -- Table: pvl_countries
-DROP TABLE IF EXISTS pvl_countries;
 CREATE TABLE IF NOT EXISTS "pvl_countries" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, iso TEXT NOT NULL);
 INSERT INTO pvl_countries (id, name, iso) VALUES (1, 'Andorra', 'AD');
 INSERT INTO pvl_countries (id, name, iso) VALUES (2, 'الإمارات العربية المتحدة', 'AE');
@@ -276,7 +277,6 @@ INSERT INTO pvl_countries (id, name, iso) VALUES (248, 'Zambia', 'ZM');
 INSERT INTO pvl_countries (id, name, iso) VALUES (249, 'Zimbabwe', 'ZW');
 
 -- Table: pvl_currencies
-DROP TABLE IF EXISTS pvl_currencies;
 CREATE TABLE IF NOT EXISTS "pvl_currencies" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, iso TEXT);
 INSERT INTO pvl_currencies (id, name, description, iso) VALUES (1, 'درهم إماراتي', NULL, 'AED');
 INSERT INTO pvl_currencies (id, name, description, iso) VALUES (2, 'افغانی', NULL, 'AFN');
@@ -458,50 +458,39 @@ INSERT INTO pvl_currencies (id, name, description, iso) VALUES (177, 'Zambian Kw
 INSERT INTO pvl_currencies (id, name, description, iso) VALUES (178, 'Zimbabwe Gold', NULL, 'ZWG');
 
 -- Table: pvl_debts
-DROP TABLE IF EXISTS pvl_debts;
 CREATE TABLE IF NOT EXISTS "pvl_debts" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, amount REAL, description TEXT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, date INTEGER);
 
 -- Table: pvl_expenses
-DROP TABLE IF EXISTS pvl_expenses;
 CREATE TABLE IF NOT EXISTS "pvl_expenses" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, name TEXT NOT NULL, date INTEGER, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id) NOT NULL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);
 
 -- Table: pvl_expenses_categories
-DROP TABLE IF EXISTS pvl_expenses_categories;
 CREATE TABLE IF NOT EXISTS "pvl_expenses_categories" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT);
 
 -- Table: pvl_expenses_planned
-DROP TABLE IF EXISTS pvl_expenses_planned;
 CREATE TABLE IF NOT EXISTS "pvl_expenses_planned" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, name TEXT NOT NULL, description TEXT, date INTEGER, status INTEGER, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);
 
 -- Table: pvl_expenses_recurring
-DROP TABLE IF EXISTS pvl_expenses_recurring;
 CREATE TABLE IF NOT EXISTS "pvl_expenses_recurring" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id) NOT NULL, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, date INTEGER);
 
 -- Table: pvl_plugins
-DROP TABLE IF EXISTS pvl_plugins;
 CREATE TABLE IF NOT EXISTS pvl_plugins (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, enabled INTEGER, path TEXT);
 
 -- Table: pvl_settings
-DROP TABLE IF EXISTS pvl_settings;
 CREATE TABLE IF NOT EXISTS "pvl_settings" (id INTEGER PRIMARY KEY, db_version TEXT, instance_name TEXT, lang TEXT, default_currency INTEGER REFERENCES pvl_currencies (id), demo_mode INTEGER, theme TEXT);
 
 -- Table: pvl_taxes
-DROP TABLE IF EXISTS pvl_taxes;
 CREATE TABLE IF NOT EXISTS "pvl_taxes" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, name TEXT, amount REAL, description TEXT, date INTEGER);
 
 -- Table: pvl_user_roles
-DROP TABLE IF EXISTS pvl_user_roles;
 CREATE TABLE IF NOT EXISTS "pvl_user_roles" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT);
 INSERT INTO pvl_user_roles (id, name, description) VALUES (1, 'Administrator', '');
 INSERT INTO pvl_user_roles (id, name, description) VALUES (2, 'Read/Write', NULL);
 INSERT INTO pvl_user_roles (id, name, description) VALUES (3, 'Viewer', NULL);
 
 -- Table: pvl_users
-DROP TABLE IF EXISTS pvl_users;
 CREATE TABLE IF NOT EXISTS "pvl_users" (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, firstname TEXT, lastname TEXT, displayname TEXT, is_admin INTEGER, password TEXT, id_role INTEGER REFERENCES pvl_user_roles (id) NOT NULL);
 
 -- Index: ux_pvl_currencies_iso
-DROP INDEX IF EXISTS ux_pvl_currencies_iso;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_pvl_currencies_iso
     ON pvl_currencies (iso);
 

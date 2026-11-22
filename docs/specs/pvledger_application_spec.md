@@ -1,12 +1,13 @@
 # PVLedger — Web Application Specification
 
-**Document version:** Draft v0.1  
+**Document version:** Draft v0.3  
 **Date:** 2026-11-22  
 **Product:** PVLedger  
 **Slogan (as supplied):** “Manager your personal assets with privacy”  
-**Document status:** Initial working draft — requirements and proposed architecture; not a final implementation contract  
-**Database reference:** `pvledger_database_spec(1).md` — *PVLedger Database Specification, Draft v0.5*  
-**Target release:** v1 (SQLite-first)
+**Document status:** Working draft — requirements and proposed architecture; not a final implementation contract  
+**Database reference:** `pvledger_database_spec(2).md` — *PVLedger Database Specification, Draft v0.6.1* (`pvledger(6).sql` identified by that specification as its SQL source)  
+**Target release:** v1 (SQLite-first)  
+**Scope of this revision:** Align the application requirements with database spec v0.6.1; preserve the v0.2 repository layout and optional Docker deployment.
 
 > **Reading guide:** **Required** means supplied by the project owner or established in the attached database specification. **Proposed** is a starting implementation choice that may be changed. **Later** means explicitly deferred or not yet specified. The database specification and its source SQL govern the *existing* schema; this document must not be read as permission to modify it silently.
 
@@ -31,6 +32,7 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 - **Credit account:** Account whose `amount` is the remaining debt, not the credit limit.
 - **Savings account:** Account whose `amount` is the current funds held.
 - **Financial entry:** Expense, planned expense, recurring expense, debt, or tax record.
+- **Historical balance snapshot:** A dated *account balance* record in `pvl_account_history_current` or `pvl_account_history_savings`; it is not a transaction, cash flow, or live account balance.
 - **Locale:** String such as `en_US`, `ru_RU`, `kk_KZ`, or `de_DE` corresponding to a YAML language file.
 - **Plugin:** A locally installed extension discovered from the configured plugins directory and managed through the application registry.
 
@@ -47,7 +49,7 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 | Languages | File-backed locale system; initial `en_US`, with `ru_RU`, `kk_KZ`, `de_DE` supported as language-pack targets | Additional YAML packs |
 | Authentication | Local users and roles | External identity integrations only if approved |
 | Plugin system | Discover, validate, enable/disable registered local plugins; minimal extension API | Wider extension API, distribution and compatibility guarantees |
-| Financial features | Work with records represented by current 16-table database | Additional accounting/asset models after schema changes |
+| Financial features | Work with records represented by current 18-table database, including balance history for current and savings accounts | Additional accounting/asset models after schema changes |
 
 ---
 
@@ -77,6 +79,7 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 - Serve the UI and the JSON API from the same origin.
 - If the instance is reachable across a network, deploy HTTPS through a reverse proxy or an explicitly configured TLS server.
 - No telemetry, remote account, or outbound network traffic is required for normal use.
+- **Optional Docker deployment:** supply a root `Dockerfile` and `docker-compose.yaml` alongside direct/native CMake build and deployment. Docker must not be required to develop or run PVLedger.
 
 ---
 
@@ -106,20 +109,29 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 | APP-020 | Offer API documentation and automated tests | Proposed | Should |
 | APP-021 | Add PostgreSQL support | Later | Later |
 | APP-022 | Add MariaDB / MySQL support | Later | Later |
+| APP-023 | Organize C++ implementation under `src/` and header files under `src/headers/` | Required | Must |
+| APP-024 | Keep web page HTML templates in root `templates/` and client JavaScript in root `js/` | Required | Must |
+| APP-025 | Store documentation under `docs/`, including application and database specifications in `docs/spec/`; provide root `README.md` | Required | Must |
+| APP-026 | Provide root `Dockerfile` and `docker-compose.yaml` for **optional** container build and deployment | Required deliverables; optional deployment | Should |
+| APP-027 | Support historical balance records for current/checking accounts via `pvl_account_history_current` | Required by DB v0.6.1 | Must |
+| APP-028 | Support historical balance records for savings accounts via `pvl_account_history_savings` | Required by DB v0.6.1 | Must |
+| APP-029 | Enforce mandatory history `id_account`, `date`, and `amount` fields and their parent-account foreign keys | Required by DB v0.6.1 | Must |
+| APP-030 | Keep history snapshots distinct from live balances; do not infer automatic snapshot creation or synchronization | Required schema interpretation; automation undecided | Must |
+| APP-031 | Initialize new databases using the v0.6.1 schema and one-time reference seeds; support safe, additive upgrades from prior schema versions | Required by DB v0.6.1 | Must |
 
 ### 3.1 Main UI pages and modules
 
 | UI section | Main pages / actions | Existing tables |
 |---|---|---|
 | Dashboard | Overview, balance totals by currency, outstanding debt, recent expenses | Aggregates from financial tables |
-| Accounts | Current, savings, credit; list, create, view, edit, delete if unreferenced | `pvl_accounts_current`, `pvl_accounts_savings`, `pvl_accounts_credit` |
+| Accounts | Current, savings, credit; list, create, view, edit, delete if unreferenced; view dated balance history for current and savings | `pvl_accounts_current`, `pvl_accounts_savings`, `pvl_accounts_credit`, `pvl_account_history_current`, `pvl_account_history_savings` |
 | Expenses | Actual expenses, categories, planned expenses, recurring entries | `pvl_expenses`, `pvl_expenses_categories`, `pvl_expenses_planned`, `pvl_expenses_recurring` |
 | Liabilities | Debts, taxes | `pvl_debts`, `pvl_taxes` |
 | Reference data | Banks, currencies, countries | `pvl_banks`, `pvl_currencies`, `pvl_countries` |
 | Administration | Users, roles, plugins, instance settings | `pvl_users`, `pvl_user_roles`, `pvl_plugins`, `pvl_settings` |
 | System | Login, first-run setup, help/about, error pages | Application services |
 
-**Proposed navigation:** Dashboard · Accounts (Current / Savings / Credit) · Expenses (Actual / Planned / Recurring / Categories) · Debts · Taxes · Banks · Administration (Users / Plugins / Settings) · Reference Data (Countries / Currencies) · About.
+**Proposed navigation:** Dashboard · Accounts (Current / Savings / Credit, with account-detail Balance History tabs for Current and Savings) · Expenses (Actual / Planned / Recurring / Categories) · Debts · Taxes · Banks · Administration (Users / Plugins / Settings) · Reference Data (Countries / Currencies) · About.
 
 **CRUD behavior:** All forms validate required relationships, show readable errors, and prevent deletion of records that are still referenced by foreign keys. Reference seeds must not be reset on application restarts. A Viewer can see only authorized records; menu hiding is cosmetic, not a security boundary.
 
@@ -131,6 +143,8 @@ The following meanings are **required by the database specification**:
 |---|---|
 | `pvl_accounts_current.amount` | Current available funds in a current/checking account |
 | `pvl_accounts_savings.amount` | Current funds in a savings account |
+| `pvl_account_history_current.amount` | Historical funds balance at the recorded timestamp for its linked current/checking account |
+| `pvl_account_history_savings.amount` | Historical funds balance at the recorded timestamp for its linked savings account |
 | `pvl_accounts_credit.amount` | Remaining debt on a credit account |
 | `pvl_debts.amount` | Currently outstanding debt |
 | `pvl_taxes.amount` | Tax amount for the record |
@@ -153,7 +167,24 @@ The source SQL permits `NULL` and does not enforce these codes. The application 
 
 **Recurring expenses:** `pvl_expenses_recurring` has no recurrence interval/frequency field. v1 may provide manual CRUD for these records, but automatic recurring scheduling requires an approved schema extension or other explicitly specified rule store.
 
-**Timestamps:** Existing `date` and `billing_date` fields are nullable SQL integers. Draft interpretation is Unix seconds in UTC, formatted in the UI for the user's selected locale; timezone and date-only behavior need final definition.
+**Timestamps:** Existing financial `date` and `billing_date` fields (outside the two history tables) remain nullable SQL integers. The **history-table `date` fields are NOT NULL**. Draft interpretation is Unix seconds in UTC, formatted in the UI for the user's selected locale; timezone, date-only behavior and snapshot cutoff need final definition.
+
+### 3.3 Historical balance snapshots (database v0.6.1)
+
+The database adds **two** separate tables for account balances at specific points in time. The following schema shape is authoritative; page design and operations are proposed.
+
+| Table | Required account relationship | Required snapshot fields | Meaning |
+|---|---|---|---|
+| `pvl_account_history_current` | `id_account INTEGER NOT NULL` → `pvl_accounts_current.id` | `date INTEGER NOT NULL`; `amount REAL NOT NULL` | Current/checking account funds held at the recorded time |
+| `pvl_account_history_savings` | `id_account INTEGER NOT NULL` → `pvl_accounts_savings.id` | `date INTEGER NOT NULL`; `amount REAL NOT NULL` | Savings account funds held at the recorded time |
+
+Each table also contains `id INTEGER PRIMARY KEY AUTOINCREMENT`. Both foreign keys use `NO ACTION` on update and delete, and every SQLite connection must have foreign-key enforcement enabled. A history record **must belong to an existing account**; the account's own `id_currency` determines the snapshot currency, because neither history table has an `id_currency` field.
+
+**Required interpretation:** `amount` is an *absolute balance at `date`*, not a transaction amount, debit/credit, balance change, or current/live balance. `pvl_accounts_current.amount` and `pvl_accounts_savings.amount` remain the separate current balances. No SQL trigger or documented rule synchronizes snapshots with those live amounts. Do not automatically change either value from edits to the other until the behavior has been explicitly specified.
+
+**Proposed v1 UI:** Show a chronological history table (date/time, amount, linked account currency) and optional trend chart in current/savings account detail screens; permit viewing/filtering by a date range. A create/edit/delete form for history entries is a *proposed* UI operation, subject to an approved snapshot capture and correction policy. Do not fabricate past balances by extrapolating current values or expenses.
+
+**Explicitly not specified in the database:** snapshot frequency (daily, end-of-day, manual or on change), duplicate-handling policy for the same `(id_account, date)`, retrospective corrections, chart downsampling and account-history retention. There is **no unique `(id_account, date)` constraint** and **no composite index on those two columns** in the uploaded specification. Any app-side restriction or index requires a separately approved decision/migration. These history tables do not cover credit accounts. All timestamps follow the draft UTC Unix-seconds convention, not an enforced database time-zone setting.
 
 ---
 
@@ -179,11 +210,12 @@ On startup, PVLedger loads its selected configuration, validates paths and datab
 
 - Write database engine details, endpoint port, directories and database connection data to `config.yaml`.
 - Write `db_version`, `lang`, `instance_name`, `default_currency`, `theme` and other relevant persisted preferences to the **single** `pvl_settings` record.
-- Insert initial schema and **430 authoritative reference rows** from the source SQL: 249 countries, 178 currencies and 3 roles. Create the first user separately; the SQL does not seed one.
+- On a **fresh** database, create all **18 v0.6.1 tables** (including both account-history tables) and apply the **430 authoritative reference rows once**: 249 countries, 178 currencies and 3 roles. Create the first user separately; the SQL does not seed one. `CREATE TABLE IF NOT EXISTS` does **not** make fixed-ID seed `INSERT` statements repeatable: detect previous initialization and skip/reconcile seeds rather than blindly rerunning them.
 - Run database changes inside transactions where supported. Never leave a half-initialized database silently marked complete.
 - Create a settings record once; subsequent starts reuse it and do not reset user changes.
 - Handle invalid locale, duplicate username, unwritable config, failed database connection and incomplete initialization with recoverable error messages.
 - Write configuration atomically (temporary file then rename where supported), preserve restrictive permissions, and never log passwords or connection secrets.
+- Source SQL v0.6.1 no longer includes prior `DROP TABLE IF EXISTS` statements. Treat fresh initialization and incremental upgrades as separate workflows; never run a full seed script as an upgrade or restart action.
 
 ---
 
@@ -430,13 +462,14 @@ errors:
 
 ### 10.1 Authoritative database reference
 
-**The attached database specification v0.5 remains the authority** for the exact SQLite column names, types, nullability, foreign keys, indexes, seed IDs, and initial data. Summary: **16 tables, 97 columns, 22 foreign keys, one explicit secondary index and 430 seed records** (249 countries + 178 currencies + 3 roles).
+**The attached database specification v0.6.1 is the authority** for the exact SQLite table/column names, types, nullability, foreign keys, indexes, seed IDs, and initial data. It identifies `pvledger(6).sql` as its SQL source. Summary: **18 tables, 105 columns, 24 foreign keys (23 required, 1 optional), one explicit secondary index and 430 seed records** (249 countries + 178 currencies + 3 roles). This revision updates the app specification from the provided *database specification*; it does not independently re-validate an unattached SQL file.
 
 **Table inventory:**
 
 | Category | Tables |
 |---|---|
 | Accounts | `pvl_accounts_current`, `pvl_accounts_savings`, `pvl_accounts_credit` |
+| Balance history (new in DB v0.6) | `pvl_account_history_current`, `pvl_account_history_savings` |
 | Transactions/planning | `pvl_expenses`, `pvl_expenses_categories`, `pvl_expenses_planned`, `pvl_expenses_recurring` |
 | Other financial | `pvl_debts`, `pvl_taxes` |
 | Reference | `pvl_banks`, `pvl_countries`, `pvl_currencies` |
@@ -445,16 +478,18 @@ errors:
 **Existing constraints and gotchas:**
 
 - SQLite connections must enable `PRAGMA foreign_keys=ON`.
-- Required FKs use `NO ACTION` for deletes and updates; do not rely on automatic cascading deletion.
+- **23 foreign keys are required** and the sole optional FK is `pvl_settings.default_currency`; all use `NO ACTION` on deletes and updates. Do not rely on automatic cascading deletion. Both history `id_account` foreign keys are `NOT NULL`, as are history `date` and `amount`.
 - The unique `ux_pvl_currencies_iso` index allows multiple `NULL` ISO codes; country ISO has no schema-level uniqueness constraint.
-- Financial `amount` fields are SQLite `REAL`, not fixed precision. Rounding and eventual decimal migration need a policy.
+- Financial `amount` fields are SQLite `REAL`, not fixed precision. Existing financial amounts are nullable; the two new history-table `amount` fields are **NOT NULL**. Rounding and eventual decimal migration need a policy.
+- Historical balances are snapshots, not transaction deltas or live account balances; no SQL triggers reconcile the two representations. Neither history table enforces a unique `(id_account, date)` pair or supplies an index on it.
+- The v0.6.1 schema initialization script has no `DROP TABLE` statements but uses non-idempotent fixed-ID reference inserts. Treat one-time seeding separately from repeatable schema detection.
 - `pvl_settings` must contain exactly one row **by application rule**; SQL itself does not enforce it.
 - `db_version` is a database schema version, **not** the document version or app binary version.
 - Recurrence frequency, role permissions, other integer flags, and detailed billing/interest conventions are not specified by the schema.
 
 ### 10.2 Repository and adapter design (proposed)
 
-Define interfaces such as `IDatabaseConnection`, `IAccountRepository`, `IExpenseRepository`, `ISettingsRepository`, `IUserRepository`, and `IMigrationRunner`. Oat++ controllers call services; services call repositories. Central business rules should not depend on SQLite-specific SQL. Use dedicated per-engine SQL when syntax differs.
+Define interfaces such as `IDatabaseConnection`, `IAccountRepository`, `IAccountHistoryRepository`, `IExpenseRepository`, `ISettingsRepository`, `IUserRepository`, and `IMigrationRunner`. Oat++ controllers call services; services call repositories. Central business rules should not depend on SQLite-specific SQL. Use dedicated per-engine SQL when syntax differs.
 
 **Engine policy:**
 
@@ -469,13 +504,13 @@ An engine switch is a new connection target, **not an automatic cross-engine mig
 
 ### 10.3 Initialization and migration policy
 
-1. Detect schema absence: initialize only a fresh database with the approved SQL and seed data.
-2. Detect existing schema: read singleton `pvl_settings.db_version` and compare with supported migration versions.
-3. If upgrading: check compatibility, create a recoverable backup, apply ordered data-preserving migration scripts, and verify resulting schema/version.
-4. Never run a `DROP TABLE`-based fresh initialization script against a populated database.
-5. Refuse unsupported downgrade and unknown newer schema versions with a clear error.
-6. Make seed operations deterministic and non-destructive; never overwrite users or changed settings.
-7. Maintain per-engine migrations as needed and test them against real engines before enabling those backends.
+1. **Fresh database only:** create the **18-table** v0.6.1 schema from the approved SQL and import the 430 fixed-ID reference seed rows exactly once. Its `CREATE TABLE IF NOT EXISTS` statements do not make the full script safe to rerun, because the seed `INSERT`s can conflict.
+2. **Existing database:** read singleton `pvl_settings.db_version` and compare it with supported migration versions. Do not reset the application or reinsert fixed reference IDs on restart.
+3. **Upgrade from DB v0.5:** use an additive migration that creates `pvl_account_history_current` and `pvl_account_history_savings` with `id_account`, `date`, and `amount` all `NOT NULL`, retaining existing data and without reapplying seeds.
+4. **Upgrade from DB v0.6:** before enforcing the corrected `pvl_account_history_current.id_account NOT NULL`, check existing history rows for `NULL` account references. Resolve affected rows through an explicit data-preservation policy; **only then** perform a safe SQLite table rebuild if necessary, verify foreign-key integrity, and record the completed schema version. Do not silently delete or guess the parent account for orphan records.
+5. **General upgrades:** create a recoverable backup, apply ordered data-preserving scripts, verify schema/relationships/data and update `db_version` only on successful completion. Never run destructive drop/recreate initialization on a populated database.
+6. Refuse unsupported downgrade and unknown newer schema versions with a clear error. Maintain engine-specific migrations and test them against real engines before enabling those backends.
+7. Require `PRAGMA foreign_keys=ON` for all SQLite application connections; verify the history constraints and the existing singleton settings invariant after initialization/migration.
 
 **Integration note:** Oat++ has a schema migration facility, but its version bookkeeping must be reconciled with the project requirement to keep the current schema version in `pvl_settings.db_version`. Use one authoritative migration flow or an explicitly synchronized design; do not maintain conflicting migration versions.
 
@@ -490,6 +525,8 @@ The browser UI should use a versioned, same-origin API prefix `/api/v1`. This is
 | Session | `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me` | Authentication and current user |
 | Dashboard | `GET /api/v1/dashboard` | Aggregated summary grouped by currency |
 | Accounts | `/api/v1/accounts/current`, `/api/v1/accounts/savings`, `/api/v1/accounts/credit` | GET collection; POST create; GET/PATCH/DELETE `/{id}` |
+| Current account balance history | `GET /api/v1/accounts/current/{id}/history` and proposed `POST /api/v1/accounts/current/{id}/history` | List dated absolute balances; creation pending snapshot policy |
+| Savings account balance history | `GET /api/v1/accounts/savings/{id}/history` and proposed `POST /api/v1/accounts/savings/{id}/history` | List dated absolute balances; creation pending snapshot policy |
 | Banks | `/api/v1/banks` | CRUD |
 | Countries | `/api/v1/countries` | Read/list; admin-managed edits if allowed |
 | Currencies | `/api/v1/currencies` | Read/list; admin-managed edits if allowed |
@@ -509,7 +546,7 @@ The browser UI should use a versioned, same-origin API prefix `/api/v1`. This is
 
 **Proposed API conventions:**
 
-- Validate all IDs and foreign-key references; `404` for not found, `409` for integrity conflicts, `400`/`422` for invalid input, `401`/`403` for auth failures.
+- Validate all IDs and foreign-key references; `404` for not found, `409` for integrity conflicts, `400`/`422` for invalid input, `401`/`403` for auth failures. For history, enforce existing parent account and non-null timestamp/balance, and get snapshot currency from its parent account; never expose history from another account without authorization.
 - List routes support `page`, `page_size`, `sort` and allowlisted filter parameters.
 - Never expose password digest or database credentials in API responses.
 - Return consistent error JSON, e.g. `{"error":{"code":"VALIDATION_ERROR","message":"..."}}`, with localized display text as a separate concern.
@@ -571,80 +608,106 @@ flowchart TD
     Bootstrap --> Repos
 ```
 
-### 13.2 Suggested repository layout
+### 13.2 Project repository structure
+
+The following **top-level paths and their purposes are required** by the project owner. Nested modules and additional support directories shown in the tree are **proposed**, and can be adjusted as the implementation develops. All paths are relative to the repository root. Forward slashes in this document represent directory separators; the requested `src\headers` and `docs\spec` paths are `src/headers/` and `docs/spec/` on Linux.
 
 ```text
 pvledger/
-├── CMakeLists.txt
-├── cmake/
-├── README.md
-├── config/
-│   └── config.example.yaml
-├── lang/
-│   ├── en_US.yaml
-│   ├── ru_RU.yaml
-│   ├── kk_KZ.yaml
-│   └── de_DE.yaml
-├── themes/
-│   └── default/
-│       ├── theme.css
-│       └── assets/
-├── plugins/
-│   └── README.md
-├── sql/
-│   ├── sqlite/
-│   │   ├── schema_init.sql
-│   │   ├── seed_reference.sql
-│   │   └── migrations/
-│   ├── postgresql/          # later
-│   └── mariadb/             # later
-├── web/
-│   ├── templates/
-│   │   ├── layout.html
-│   │   ├── login.html
-│   │   ├── setup/
-│   │   └── pages/
-│   └── static/
-│       ├── js/menu.js
-│       └── css/
-├── src/
-│   ├── main.cpp
+├── CMakeLists.txt                 # Root CMake build definition (required by build system)
+├── README.md                      # Project overview, build and setup instructions
+├── Dockerfile                     # Optional Docker image build
+├── docker-compose.yaml            # Optional Docker deployment configuration
+├── src/                           # C++ application source code
+│   ├── main.cpp                   # Application entry point
+│   ├── headers/                   # C++ header files (.h/.hpp)
+│   │   ├── config/
+│   │   ├── controllers/
+│   │   ├── services/
+│   │   ├── repositories/
+│   │   └── plugins/
 │   ├── cli/
 │   ├── config/
 │   ├── bootstrap/
 │   ├── controllers/
 │   ├── dto/
-│   ├── services/
-│   ├── repositories/
+│   ├── services/                   # Includes proposed account-history service
+│   ├── repositories/               # Includes proposed account-history repository
 │   │   ├── interfaces/
 │   │   └── sqlite/
 │   ├── migrations/
 │   ├── auth/
 │   ├── i18n/
-│   ├── templates/
 │   ├── plugins/
-│   └── ui/
-├── include/pvledger/
-├── tests/
+│   └── ui/                        # UI integration / HTML rendering C++ code
+├── templates/                     # HTML templates for web pages
+│   ├── layout.html
+│   ├── login.html
+│   ├── setup/
+│   └── pages/
+├── js/                            # JavaScript files
+│   ├── menu.js
+│   └── app.js
+├── docs/                          # Documentation
+│   ├── spec/                      # Application, database and related specifications
+│   │   ├── application_spec.md
+│   │   └── database_spec.md
+│   └── api/                       # Proposed API documentation
+├── config/                        # Proposed example/runtime config location
+│   └── config.example.yaml
+├── lang/                          # Proposed default location for YAML language packs
+│   ├── en_US.yaml
+│   ├── ru_RU.yaml
+│   ├── kk_KZ.yaml
+│   └── de_DE.yaml
+├── themes/                        # Proposed default theme assets
+│   └── default/
+│       ├── theme.css
+│       └── assets/
+├── plugins/                       # Proposed default plugin directory
+│   └── README.md
+├── sql/                           # Proposed database SQL scripts / migrations
+│   ├── sqlite/
+│   │   ├── schema_init.sql
+│   │   ├── seed_reference.sql
+│   │   └── migrations/             # Additive/history constraint fixes
+│   ├── postgresql/                # Later
+│   └── mariadb/                   # Later
+├── tests/                         # Proposed test suites
 │   ├── unit/
 │   ├── integration/
 │   └── fixtures/
-└── docs/
-    ├── application_spec.md
-    ├── database_spec.md
-    └── api/
+└── cmake/                         # Proposed CMake helper modules
 ```
 
-### 13.3 CMake expectations
+The root `Dockerfile` and `docker-compose.yaml` are **part of the project structure**; using Docker is **not mandatory**. `config/`, `lang/`, `themes/`, `plugins/`, `sql/`, `tests/` and `cmake/` are suggested support locations, not additional paths specified by the owner. The runtime paths for language packs, plugins and themes remain configurable through `config.yaml`.
+
+### 13.3 Required directory and file responsibilities
+
+| Path | Purpose / implementation rule |
+|---|---|
+| `src/` | C++ implementation and Oat++ application logic (`.cpp` and related source files). |
+| `src/headers/` | Project-owned C++ declarations (`.h` / `.hpp`), optionally organized into module subdirectories. Do not introduce a separate top-level `include/` as the canonical header location. |
+| `templates/` | Server-rendered HTML templates and reusable page/layout fragments. C++ rendering code belongs in `src/`, not here. |
+| `js/` | Client-side JavaScript, including the required menu generator (`js/menu.js`). Do not put the canonical JavaScript source under `web/static/js/`. |
+| `docs/` | Documentation root (guides, API material, developer notes). |
+| `docs/spec/` | Application specification, database specification and future architecture/interface specifications. The filenames shown above are proposed. |
+| `README.md` | Root-level overview; prerequisites; native CMake build; configuration; starting the application; optional Docker instructions; links to `docs/spec/`. |
+| `Dockerfile` | Reproducible, optional Docker image build for PVLedger and its required runtime assets. |
+| `docker-compose.yaml` | Optional container deployment definition with config/database persistence and a configurable web port. |
+
+### 13.4 CMake expectations
 
 - Define an executable target `vpledger`, C++ standard, warnings, and install rules.
+- Treat `src/` as the C++ source root and `src/headers/` as the canonical project-header location (for example with `target_include_directories(vpledger PRIVATE src/headers)`).
 - Link compatible, pinned dependencies for Oat++, SQLite integration, YAML parsing, template rendering and optionally testing/Swagger.
 - Use build options to turn optional database backends, plugin support and API documentation on/off without changing core application logic.
-- Copy/install `lang/`, `web/`, `themes/` and example config into documented locations.
+- Copy/install `templates/`, `js/`, `lang/`, `themes/` and example config into documented runtime locations; preserve the ability to override applicable paths through `config.yaml`.
 - Configure CTest (or equivalent) with unit/integration test targets.
 - Keep third-party dependency retrieval reproducible; avoid unpinned downloads in production build scripts.
+- **Native build is the primary supported workflow; Docker must remain optional.**
 
-**Proposed example commands:**
+**Proposed native build commands:**
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -656,6 +719,25 @@ ctest --test-dir build --output-on-failure
 
 The commands describe the target developer workflow; the repository and `CMakeLists.txt` have not yet been generated.
 
+### 13.5 Optional Docker build and deployment
+
+- **`Dockerfile`** must define how to build and package the C++ application, its runtime dependencies and required assets. A multi-stage CMake build is recommended to keep the runtime image smaller.
+- **`docker-compose.yaml`** must define a PVLedger service that can build from the root `Dockerfile` and optionally mount a `config.yaml`, the SQLite database location and other configurable asset directories as needed.
+- Persistent SQLite data and local configuration must survive container replacement. Avoid baking real user data or secrets into images.
+- The application still uses `vpledger -c <path>` inside the container; port mappings must be consistent with the configured application port and chosen bind address.
+- Document volume ownership/permissions, backup behavior, network exposure, and where to supply local configuration. The deployment should default to private/local access rather than automatically publishing financial data to the public Internet.
+- Docker Compose is an optional operational convenience, not a replacement for CMake or a dependency of normal application execution.
+
+**Proposed Docker workflow (once files are implemented):**
+
+```bash
+docker build -t pvledger:local .
+docker compose -f docker-compose.yaml up --build -d
+docker compose -f docker-compose.yaml down
+```
+
+The exact service configuration, image base, volume mappings, listening address, and exposed ports remain implementation decisions.
+
 ---
 
 ## 14. Non-functional requirements
@@ -664,7 +746,7 @@ The commands describe the target developer workflow; the repository and `CMakeLi
 |---|---|
 | Privacy | Self-hosted operation; no required cloud connection or telemetry; user controls database and configuration files |
 | Security | Authentication, role checks, SQL parameterization, CSRF protection, HTML escaping, protected setup and plugin loading |
-| Data integrity | Enforce foreign keys; use transactions for multi-record operations; preserve records on upgrade |
+| Data integrity | Enforce all 24 foreign keys (23 required); require non-null history account/date/amount, preserve snapshots and users on upgrade, use transactions for multi-record operations |
 | Backup/restore | Document SQLite file-backup procedure and backup-before-migration policy; test restore |
 | Internationalization | UTF-8 for database/UI/YAML; locale fallback; translation-key validation |
 | Portability | Separate OS/platform paths and database integrations from business services |
@@ -682,6 +764,11 @@ The commands describe the target developer workflow; the repository and `CMakeLi
 - Restart preserves data, selected language, theme, currency and instance name without rerunning seeds.
 - Unauthenticated requests cannot access financial pages/API; Viewer cannot modify; Read/Write cannot change admin settings.
 - Invalid FK, deletion with references and invalid planned status yield controlled errors.
+- Creating history rows without `id_account`, `date` or `amount` fails; an account history entry cannot refer to a nonexistent current/savings account or the wrong account type.
+- History `amount` is displayed as an absolute balance in the parent account currency; editing/viewing history never silently changes the live `pvl_accounts_current.amount` / `pvl_accounts_savings.amount`, or vice versa.
+- The schema itself permits more than one history record with an identical account/timestamp pair; tests do not assume a uniqueness constraint or `(id_account, date)` index exists.
+- Fresh v0.6.1 initialization creates 18 tables, 24 foreign keys and 430 reference rows exactly once; subsequent starts do not rerun fixed-ID seed inserts.
+- v0.5→v0.6.1 upgrade adds both history tables without destroying data; v0.6→v0.6.1 upgrade detects NULL current-history account links, blocks unsafe conversion and preserves the affected rows.
 - All available locale packs parse, required translation keys exist or fall back, Cyrillic/Kazakh/German Unicode renders correctly.
 - Malformed or incompatible plugin does not compromise startup; disabled plugin routes/menu are unavailable.
 - Migration runs once, preserves user entries and refuses downgrade/unsupported schema.
@@ -694,11 +781,11 @@ The commands describe the target developer workflow; the repository and `CMakeLi
 
 | Phase | Deliverables | Completion check |
 |---|---|---|
-| **M0 — Skeleton** | CMake project, `vpledger` executable, `--help`, `--version`, Oat++ server, example config, tests | App builds and serves health/about page |
-| **M1 — Storage & bootstrap** | YAML config, SQLite repo, schema/seed initialization, migrations and singleton settings | Fresh setup and restart pass integrity tests |
+| **M0 — Skeleton** | CMake project following `src/`, `src/headers/`, `templates/`, `js/` and `docs/spec/`; root `README.md`, optional-deployment `Dockerfile` and `docker-compose.yaml`; `vpledger` executable, CLI, Oat++ server and tests | Native build works; Docker packaging can be validated separately |
+| **M1 — Storage & bootstrap** | YAML config, SQLite repo, 18-table v0.6.1 schema/one-time seed initialization, safe upgrades (v0.5 and v0.6) and singleton settings | Fresh setup and restart pass schema/integrity tests; no repeated fixed-ID seeds |
 | **M2 — Localization & wizard** | YAML locale loader, setup UI, first admin, persisted locale/instance/theme/currency | End-to-end first-run works in at least one completed locale |
 | **M3 — Security & base UI** | Login/logout, sessions, roles, templating, JS menu, themes | Role enforcement validated on pages and API |
-| **M4 — Financial modules** | CRUD/forms for banks, accounts, expenses, categories, planned/recurring, debts and taxes | Data validation and FK behaviors tested |
+| **M4 — Financial modules** | CRUD/forms for banks, accounts, expenses, categories, planned/recurring, debts and taxes; dated balance history display for current/savings and an approved snapshot-entry workflow | Data validation, historical balance semantics and FK behaviors tested |
 | **M5 — Plugins & stabilization** | Plugin registry/loader, safe defaults, documentation, backup/restore guidance, regression tests | Plugin enable/disable and upgrade tests pass |
 | **M6 — Future databases** | PostgreSQL support, then MariaDB/MySQL adapters and migrations | Each backend passes common integration suite |
 
@@ -710,7 +797,7 @@ Each milestone may be split into issues. No schedule, team size, or release date
 
 These are **not** settled by the attached database contract or the original application brief.
 
-1. **Balance calculation:** Should expense records automatically debit account balances, or are balances edited manually? What happens when an expense is modified/deleted, and when currencies differ?
+1. **Balance calculation:** Should expense records automatically debit account balances, or are balances edited manually? What happens when an expense is modified/deleted, and when currencies differ? Keep this separate from historical balance snapshot creation.
 2. **Password storage:** Keep the requested SHA-256 representation only for prototype compatibility, or approve migration to Argon2id before real deployment?
 3. **User isolation:** May users view one another's finances? How do `id_user`, roles and child records establish ownership?
 4. **`is_admin` vs. `id_role`:** Which field determines administrator privileges and how is conflicting data handled?
@@ -728,6 +815,11 @@ These are **not** settled by the attached database contract or the original appl
 16. **Brand copy:** Supplied slogan is **“Manager your personal assets with privacy”**. Confirm whether intended wording is **“Manage your personal assets with privacy”** before changing UI copy.
 17. **Data portability:** Import/export, backups through UI and cross-engine data migration need a separate specification.
 18. **Scope of “assets”:** Whether to add non-bank assets (property, investments, vehicles, cash) after v1; not modeled today.
+19. **Snapshot creation:** Should balances be captured manually, at day-end, periodically or on balance changes? Define time zone/day boundary and timestamp choice.
+20. **Snapshot corrections and duplicates:** Should multiple snapshots for one `(id_account, date)` be accepted, merged or rejected by application logic? Current SQL imposes no uniqueness constraint.
+21. **History retention and account deletion:** Define what happens to a current/savings account with dependent snapshots, given `NO ACTION` foreign keys. Specify any archived-account approach separately.
+22. **History performance:** Whether to add a composite index on `(id_account, date)` after measuring query needs; this index is absent from DB v0.6.1.
+23. **Migration recovery:** How to resolve legacy v0.6 current-history rows with `NULL id_account` before enforcing v0.6.1's NOT NULL constraint, without losing balances.
 
 ---
 
@@ -739,21 +831,26 @@ A first usable release is ready for review when all of the following are demonst
 - [ ] `vpledger -c <config-path>` starts a local Oat++ web server or launches secure first-run setup.
 - [ ] Valid YAML config controls SQLite path, port, language path, plugins path and themes path.
 - [ ] The wizard selects a locale, configures settings, creates the first admin and finishes without exposing setup routes afterward.
-- [ ] Database schema and seed data match the attached authoritative SQL; 430 reference rows imported once.
+- [ ] Database matches the attached v0.6.1 contract: **18 tables, 105 columns, 24 foreign keys (23 required, 1 optional), one explicit secondary index** and **430 reference rows imported once**.
 - [ ] Exactly one `pvl_settings` record exists after setup; `db_version` is used for migrations.
 - [ ] Users can log in/out and role checks are enforced on both UI and API routes.
 - [ ] Browser pages and JavaScript-generated menu display from YAML translations and HTML templates.
 - [ ] All existing financial modules can be listed and edited where authorized; financial amount meanings/statuses match the DB spec.
+- [ ] Current/savings account details can display historical absolute balances from their respective new history tables, with correct currency and timestamps; required history `id_account`, `date` and `amount` are validated.
+- [ ] Snapshot records are not treated as transactions or live balances; no unapproved automatic synchronization occurs, and the DB is not assumed to enforce unique snapshot times.
+- [ ] Fresh startup does not repeat fixed-ID seed inserts; v0.5 and v0.6 upgrade paths preserve existing data, including any legacy v0.6 rows needing null-account-link resolution.
 - [ ] Plugin discovery, registration and controlled enable/disable work with at least one sample plugin.
 - [ ] No unsafe cross-currency aggregation or unapproved automatic balance mutation is performed.
 - [ ] Restore/upgrade tests preserve an existing database; errors are logged without secrets.
+- [ ] Required repository paths exist: `src/`, `src/headers/`, `templates/`, `js/`, `docs/`, `docs/spec/`, root `README.md`, `Dockerfile` and `docker-compose.yaml`.
+- [ ] CMake builds the application without Docker; optional Docker build/Compose deployment persists SQLite data and does not require committing secrets.
 - [ ] Source, build steps, configuration reference and extension guidelines are documented.
 
 ---
 
 ## 18. References
 
-**Project reference (authoritative for schema):** `pvledger_database_spec(1).md`, PVLedger Database Specification (Draft v0.5), supplied with this request. It in turn identifies `pvledger(3).sql` as the authoritative SQL source; that SQL is **not** attached to this request and should be carried into the source repository before implementing the initializer.
+**Project reference (authoritative for schema):** `pvledger_database_spec(2).md`, **PVLedger Database Specification (Draft v0.6.1)**, supplied with this revision. It identifies `pvledger(6).sql` as its authoritative SQL source, including the corrected `pvl_account_history_current.id_account NOT NULL`. The SQL source is **not** attached to this specific message; bring the verified version-controlled SQL into the repository before implementing the initializer or migration scripts. The application specification does not replace column-by-column SQL details in the database specification.
 
 **Technical implementation references (official Oat++ documentation; checked November 2026):**
 
@@ -769,4 +866,6 @@ A first usable release is ready for review when all of the following are demonst
 | Revision | Date | Changes |
 |---|---|---|
 | v0.1 | 2026-11-22 | Initial web application specification based on project requirements and database specification v0.5. |
+| v0.2 | 2026-11-22 | Confirmed root folder structure (`src/headers/`, `templates/`, `js/`, `docs/spec/`), root `README.md`, and optional Dockerfile/Compose build and deployment; aligned CMake, milestones and acceptance criteria. |
+| v0.3 | 2026-11-22 | Aligned with database spec v0.6.1: 18-table inventory; added current/savings balance histories and NOT NULL account/date/amount rules; clarified snapshot semantics/UI/API; added one-time seed safety, v0.5/v0.6 migration paths, tests, and unresolved snapshot policies. |
 
