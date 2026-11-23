@@ -1,13 +1,13 @@
 # PVLedger — Web Application Specification
 
-**Document version:** Draft v0.3  
-**Date:** 2026-11-22  
+**Document version:** Draft v0.4  
+**Date:** 2026-11-23  
 **Product:** PVLedger  
 **Slogan (as supplied):** “Manager your personal assets with privacy”  
 **Document status:** Working draft — requirements and proposed architecture; not a final implementation contract  
-**Database reference:** `pvledger_database_spec(2).md` — *PVLedger Database Specification, Draft v0.6.1* (`pvledger(6).sql` identified by that specification as its SQL source)  
+**Database reference:** `pvledger_database_spec(3).md` — *PVLedger Database Specification, Draft v0.7.1* (derived by that specification from `pvledger(7).sql`; adds `date INTEGER NOT NULL` to both new income tables)  
 **Target release:** v1 (SQLite-first)  
-**Scope of this revision:** Align the application requirements with database spec v0.6.1; preserve the v0.2 repository layout and optional Docker deployment.
+**Scope of this revision:** Align the application with database spec v0.7.1 (20 tables/119 columns), adding actual and planned income, mandatory Unix timestamps, income APIs/UI/test requirements and migration-safe upgrade guidance. Preserve the existing repository structure, architecture, history support and optional Docker deployment.
 
 > **Reading guide:** **Required** means supplied by the project owner or established in the attached database specification. **Proposed** is a starting implementation choice that may be changed. **Later** means explicitly deferred or not yet specified. The database specification and its source SQL govern the *existing* schema; this document must not be read as permission to modify it silently.
 
@@ -15,7 +15,7 @@
 
 ## 1. Project overview
 
-PVLedger is a privacy-oriented, self-hosted web application for managing personal financial accounts, balances, debts, taxes, expenses, and related reference information. It runs as a standalone C++ web server and provides a browser-based interface. Application records remain in the database selected by the operator; the first release uses a local SQLite database.
+PVLedger is a privacy-oriented, self-hosted web application for managing personal financial accounts, balances, expenses, actual and planned income, debts, taxes, and related reference information. It runs as a standalone C++ web server and provides a browser-based interface. Application records remain in the database selected by the operator; the first release uses a local SQLite database.
 
 ### 1.1 Goals
 
@@ -31,7 +31,8 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 - **Current account:** Checking/current funds account stored in `pvl_accounts_current`.
 - **Credit account:** Account whose `amount` is the remaining debt, not the credit limit.
 - **Savings account:** Account whose `amount` is the current funds held.
-- **Financial entry:** Expense, planned expense, recurring expense, debt, or tax record.
+- **Financial entry:** Actual or planned income, expense, planned expense, recurring expense, debt, or tax record.
+- **Income record:** A named actual or planned income amount associated with an existing current/checking account. Income status and posting behavior are not yet defined by the database.
 - **Historical balance snapshot:** A dated *account balance* record in `pvl_account_history_current` or `pvl_account_history_savings`; it is not a transaction, cash flow, or live account balance.
 - **Locale:** String such as `en_US`, `ru_RU`, `kk_KZ`, or `de_DE` corresponding to a YAML language file.
 - **Plugin:** A locally installed extension discovered from the configured plugins directory and managed through the application registry.
@@ -49,7 +50,7 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 | Languages | File-backed locale system; initial `en_US`, with `ru_RU`, `kk_KZ`, `de_DE` supported as language-pack targets | Additional YAML packs |
 | Authentication | Local users and roles | External identity integrations only if approved |
 | Plugin system | Discover, validate, enable/disable registered local plugins; minimal extension API | Wider extension API, distribution and compatibility guarantees |
-| Financial features | Work with records represented by current 18-table database, including balance history for current and savings accounts | Additional accounting/asset models after schema changes |
+| Financial features | Work with records represented by the current 20-table database, including current/savings balance history and actual/planned income | Additional accounting/asset models after schema changes |
 
 ---
 
@@ -117,7 +118,16 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 | APP-028 | Support historical balance records for savings accounts via `pvl_account_history_savings` | Required by DB v0.6.1 | Must |
 | APP-029 | Enforce mandatory history `id_account`, `date`, and `amount` fields and their parent-account foreign keys | Required by DB v0.6.1 | Must |
 | APP-030 | Keep history snapshots distinct from live balances; do not infer automatic snapshot creation or synchronization | Required schema interpretation; automation undecided | Must |
-| APP-031 | Initialize new databases using the v0.6.1 schema and one-time reference seeds; support safe, additive upgrades from prior schema versions | Required by DB v0.6.1 | Must |
+| APP-031 | Initialize new databases using the v0.7.1 schema and one-time reference seeds; support safe, data-preserving upgrades from earlier schema versions | Required by DB v0.7.1 | Must |
+| APP-032 | Support `pvl_income` actual-income records against a required current/checking account | Required by DB v0.7.1 | Must |
+| APP-033 | Support `pvl_income_planned` planned-income records against a required current/checking account | Required by DB v0.7.1 | Must |
+| APP-034 | For both income tables, enforce required `id_account`, `name`, `amount`, `status`, and `date` fields; validate date as Unix time and enforce foreign-key integrity | Required by DB v0.7.1 | Must |
+| APP-035 | Keep income `status` mappings and transitions undefined until approved; never reuse planned-expense status mapping implicitly | Required schema interpretation | Must |
+| APP-036 | Do not infer account balance posting, snapshot creation, or planned-to-actual income conversion from income table existence | Required schema interpretation; workflow undecided | Must |
+| APP-037 | Expose proposed income and planned-income browser views and versioned REST resources, with authorized list/detail and a path to CRUD once status rules are defined | Proposed | Should |
+| APP-038 | Support v0.6.1 → v0.7 additive income-table migration and v0.7 → v0.7.1 mandatory-date migration (only automatically for empty income tables) | Required by DB migration contract | Must |
+| APP-039 | When migrating populated v0.7 income tables, block unsafe date-column enforcement pending accurate historic backfill and a reviewed table rebuild | Required by DB migration contract | Must |
+| APP-040 | Preserve the existing current/savings balance-history behavior and the 430 seed records | Required by DB v0.7.1 | Must |
 
 ### 3.1 Main UI pages and modules
 
@@ -126,12 +136,13 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 | Dashboard | Overview, balance totals by currency, outstanding debt, recent expenses | Aggregates from financial tables |
 | Accounts | Current, savings, credit; list, create, view, edit, delete if unreferenced; view dated balance history for current and savings | `pvl_accounts_current`, `pvl_accounts_savings`, `pvl_accounts_credit`, `pvl_account_history_current`, `pvl_account_history_savings` |
 | Expenses | Actual expenses, categories, planned expenses, recurring entries | `pvl_expenses`, `pvl_expenses_categories`, `pvl_expenses_planned`, `pvl_expenses_recurring` |
+| Income | Actual income and planned income: browse, filter by account/date/status and maintain records after status policies are finalized (UI proposal) | `pvl_income`, `pvl_income_planned` |
 | Liabilities | Debts, taxes | `pvl_debts`, `pvl_taxes` |
 | Reference data | Banks, currencies, countries | `pvl_banks`, `pvl_currencies`, `pvl_countries` |
 | Administration | Users, roles, plugins, instance settings | `pvl_users`, `pvl_user_roles`, `pvl_plugins`, `pvl_settings` |
 | System | Login, first-run setup, help/about, error pages | Application services |
 
-**Proposed navigation:** Dashboard · Accounts (Current / Savings / Credit, with account-detail Balance History tabs for Current and Savings) · Expenses (Actual / Planned / Recurring / Categories) · Debts · Taxes · Banks · Administration (Users / Plugins / Settings) · Reference Data (Countries / Currencies) · About.
+**Proposed navigation:** Dashboard · Accounts (Current / Savings / Credit, with account-detail Balance History tabs for Current and Savings) · Income (Actual / Planned) · Expenses (Actual / Planned / Recurring / Categories) · Debts · Taxes · Banks · Administration (Users / Plugins / Settings) · Reference Data (Countries / Currencies) · About.
 
 **CRUD behavior:** All forms validate required relationships, show readable errors, and prevent deletion of records that are still referenced by foreign keys. Reference seeds must not be reset on application restarts. A Viewer can see only authorized records; menu hiding is cosmetic, not a security boundary.
 
@@ -151,8 +162,10 @@ The following meanings are **required by the database specification**:
 | `pvl_expenses.amount` | Expense amount |
 | `pvl_expenses_planned.amount` | Expected/planned expense amount |
 | `pvl_expenses_recurring.amount` | Recurring-expense amount (without a modeled frequency yet) |
+| `pvl_income.amount` | Actual income amount for a linked current/checking account; recording does not itself imply balance posting |
+| `pvl_income_planned.amount` | Planned income amount for a linked current/checking account; not a received payment |
 
-**Important unresolved transaction rule:** Existing tables do not define whether creating/editing an expense automatically changes a current-account balance, nor how to apply cross-currency expenses. **Do not silently implement automatic balance changes in v1** before the owner selects and specifies the accounting rule. Until then, balances and financial entries can be recorded without inferring transfers or currency conversions. The UI must avoid implying that two values in different currencies can simply be added.
+**Important unresolved transaction rule:** Existing tables do not define whether creating/editing expenses **or income** automatically changes a current-account balance. Income has no independent currency FK: its amount is naturally interpreted in the linked current account's currency, but this is not a database-enforced conversion or posting rule. **Do not silently implement automatic balance changes in v1** before the owner selects and specifies the accounting rule. Until then, balances and financial entries can be recorded without inferring transfers, automatic deposits, automatic history snapshots or currency conversions. The UI must avoid implying that two values in different currencies can simply be added.
 
 **Planned expense status codes (`pvl_expenses_planned.status`):**
 
@@ -167,7 +180,7 @@ The source SQL permits `NULL` and does not enforce these codes. The application 
 
 **Recurring expenses:** `pvl_expenses_recurring` has no recurrence interval/frequency field. v1 may provide manual CRUD for these records, but automatic recurring scheduling requires an approved schema extension or other explicitly specified rule store.
 
-**Timestamps:** Existing financial `date` and `billing_date` fields (outside the two history tables) remain nullable SQL integers. The **history-table `date` fields are NOT NULL**. Draft interpretation is Unix seconds in UTC, formatted in the UI for the user's selected locale; timezone, date-only behavior and snapshot cutoff need final definition.
+**Timestamps:** The `date` fields of both account-history tables **and both income tables** are `INTEGER NOT NULL`. Other pre-existing `date` and `billing_date` fields retain their original nullability. Draft application convention is Unix epoch **seconds** in UTC; locale-specific formatting is a presentation concern. Exact income event/posting timing, timezone, date-only behavior and snapshot cutoff need final definition.
 
 ### 3.3 Historical balance snapshots (database v0.6.1)
 
@@ -185,6 +198,36 @@ Each table also contains `id INTEGER PRIMARY KEY AUTOINCREMENT`. Both foreign ke
 **Proposed v1 UI:** Show a chronological history table (date/time, amount, linked account currency) and optional trend chart in current/savings account detail screens; permit viewing/filtering by a date range. A create/edit/delete form for history entries is a *proposed* UI operation, subject to an approved snapshot capture and correction policy. Do not fabricate past balances by extrapolating current values or expenses.
 
 **Explicitly not specified in the database:** snapshot frequency (daily, end-of-day, manual or on change), duplicate-handling policy for the same `(id_account, date)`, retrospective corrections, chart downsampling and account-history retention. There is **no unique `(id_account, date)` constraint** and **no composite index on those two columns** in the uploaded specification. Any app-side restriction or index requires a separately approved decision/migration. These history tables do not cover credit accounts. All timestamps follow the draft UTC Unix-seconds convention, not an enforced database time-zone setting.
+
+### 3.4 Actual and planned income (database v0.7.1)
+
+The database adds **two** income tables in v0.7, then v0.7.1 makes their respective `date` columns mandatory. The following physical field contracts are authoritative; page design, status codes, accounting effects and workflows are not.
+
+| Table | Field | SQLite type / requirement | Meaning |
+|---|---|---|---|
+| `pvl_income` | `id` | `INTEGER` primary key, autoincrement | Actual income record ID |
+| `pvl_income` | `id_account` | `INTEGER NOT NULL`; FK → `pvl_accounts_current.id` | Existing associated current/checking account |
+| `pvl_income` | `amount` | `REAL NOT NULL` | Recorded income amount |
+| `pvl_income` | `name` | `TEXT NOT NULL` | Required income label |
+| `pvl_income` | `status` | `INTEGER NOT NULL` | Required, but code meanings are undefined |
+| `pvl_income` | `description` | `TEXT NULL` | Optional notes |
+| `pvl_income` | `date` | `INTEGER NOT NULL` | Income event Unix timestamp (UTC seconds by draft convention) |
+| `pvl_income_planned` | `id` | `INTEGER` primary key, autoincrement | Planned income record ID |
+| `pvl_income_planned` | `id_account` | `INTEGER NOT NULL`; FK → `pvl_accounts_current.id` | Existing associated current/checking account |
+| `pvl_income_planned` | `name` | `TEXT NOT NULL` | Required planned income label |
+| `pvl_income_planned` | `amount` | `REAL NOT NULL` | Planned income amount |
+| `pvl_income_planned` | `status` | `INTEGER NOT NULL` | Required, but code meanings are undefined |
+| `pvl_income_planned` | `description` | `TEXT NULL` | Optional notes |
+| `pvl_income_planned` | `date` | `INTEGER NOT NULL` | Expected/planned event Unix timestamp (UTC seconds by draft convention) |
+
+**Hard constraints:** Both FKs are required and use `NO ACTION` on update/delete. No independent `id_currency`, `id_user`, processed-at timestamp, created-at timestamp, link between actual and planned income, status `CHECK`, or automatic accounting trigger is defined. An income amount can be displayed with the *linked account's* currency; an income record with a nonexistent account must be rejected. Neither income table is a balance-history snapshot.
+
+**Proposed UI behavior:** Display actual and planned income separately with account, amount, currency (from account), date and status. Provide date-range and account filters and readable display of unknown status integers while code semantics are undecided. The status should not be labeled “Processed” or otherwise interpreted based on the **planned-expense** code map. Forms should require all five non-key required fields and validate numeric/timestamp types; domain-specific status choices, create/update processing buttons and completion actions must await an approved status transition table. The ability to perform basic CRUD is a proposed design, not a workflow established by the schema.
+
+**No implied posting/settlement:** Creating an actual income row does not automatically increase `pvl_accounts_current.amount`; creating planned income does not create actual income; changing either does not automatically write `pvl_account_history_current`. Define receipt/booking dates, negative amount policy, correction/deletion semantics, visibility through parent account ownership, currency handling and planned→actual reconciliation before adding those behaviors.
+
+**Validation:** `date` must be an integer Unix timestamp, with UTC epoch seconds as the draft convention. The database has no default for either `date` and no constraint enforcing timestamp units; missing values must be rejected. `amount` and `status` are non-NULL (`REAL` and `INTEGER` respectively), but no positive-only amount rule or status code range exists in the schema. If incoming values are not yet understood, do not fabricate a business state.
+
 
 ---
 
@@ -210,12 +253,12 @@ On startup, PVLedger loads its selected configuration, validates paths and datab
 
 - Write database engine details, endpoint port, directories and database connection data to `config.yaml`.
 - Write `db_version`, `lang`, `instance_name`, `default_currency`, `theme` and other relevant persisted preferences to the **single** `pvl_settings` record.
-- On a **fresh** database, create all **18 v0.6.1 tables** (including both account-history tables) and apply the **430 authoritative reference rows once**: 249 countries, 178 currencies and 3 roles. Create the first user separately; the SQL does not seed one. `CREATE TABLE IF NOT EXISTS` does **not** make fixed-ID seed `INSERT` statements repeatable: detect previous initialization and skip/reconcile seeds rather than blindly rerunning them.
+- On a **fresh** database, create all **20 v0.7.1 tables** (including both account-history tables) and apply the **430 authoritative reference rows once**: 249 countries, 178 currencies and 3 roles. Create the first user separately; the SQL does not seed one. `CREATE TABLE IF NOT EXISTS` does **not** make fixed-ID seed `INSERT` statements repeatable: detect previous initialization and skip/reconcile seeds rather than blindly rerunning them.
 - Run database changes inside transactions where supported. Never leave a half-initialized database silently marked complete.
 - Create a settings record once; subsequent starts reuse it and do not reset user changes.
 - Handle invalid locale, duplicate username, unwritable config, failed database connection and incomplete initialization with recoverable error messages.
 - Write configuration atomically (temporary file then rename where supported), preserve restrictive permissions, and never log passwords or connection secrets.
-- Source SQL v0.6.1 no longer includes prior `DROP TABLE IF EXISTS` statements. Treat fresh initialization and incremental upgrades as separate workflows; never run a full seed script as an upgrade or restart action.
+- The v0.7.1 schema described by the updated database specification has no `DROP TABLE` statements. Treat fresh initialization and incremental upgrades as separate workflows; never run a full seed script as an upgrade or restart action.
 
 ---
 
@@ -352,6 +395,8 @@ menu:
   savings_accounts: Savings accounts
   credit_accounts: Credit accounts
   expenses: Expenses
+  income: Income
+  planned_income: Planned income
   settings: Settings
 wizard:
   title: Initial setup
@@ -462,7 +507,7 @@ errors:
 
 ### 10.1 Authoritative database reference
 
-**The attached database specification v0.6.1 is the authority** for the exact SQLite table/column names, types, nullability, foreign keys, indexes, seed IDs, and initial data. It identifies `pvledger(6).sql` as its SQL source. Summary: **18 tables, 105 columns, 24 foreign keys (23 required, 1 optional), one explicit secondary index and 430 seed records** (249 countries + 178 currencies + 3 roles). This revision updates the app specification from the provided *database specification*; it does not independently re-validate an unattached SQL file.
+**The attached database specification v0.7.1 is the authority** for the exact SQLite table/column names, types, nullability, foreign keys, indexes, seed IDs and initial data. It derives the v0.7.1 schema from `pvledger(7).sql` by adding `date INTEGER NOT NULL` to each income table; the original v0.7 SQL alone does **not** include those two fields. Summary: **20 tables, 119 columns, 26 foreign keys (25 required, 1 optional), one explicit secondary index and 430 seed records** (249 countries + 178 currencies + 3 roles). This revision updates the application specification from the attached *database specification*; the derived SQL and migration files named there were not provided here and must be obtained/verified before implementation.
 
 **Table inventory:**
 
@@ -470,7 +515,8 @@ errors:
 |---|---|
 | Accounts | `pvl_accounts_current`, `pvl_accounts_savings`, `pvl_accounts_credit` |
 | Balance history (new in DB v0.6) | `pvl_account_history_current`, `pvl_account_history_savings` |
-| Transactions/planning | `pvl_expenses`, `pvl_expenses_categories`, `pvl_expenses_planned`, `pvl_expenses_recurring` |
+| Expenses/planning | `pvl_expenses`, `pvl_expenses_categories`, `pvl_expenses_planned`, `pvl_expenses_recurring` |
+| Income (added in DB v0.7/v0.7.1) | `pvl_income`, `pvl_income_planned` |
 | Other financial | `pvl_debts`, `pvl_taxes` |
 | Reference | `pvl_banks`, `pvl_countries`, `pvl_currencies` |
 | Administration | `pvl_users`, `pvl_user_roles`, `pvl_settings`, `pvl_plugins` |
@@ -478,18 +524,20 @@ errors:
 **Existing constraints and gotchas:**
 
 - SQLite connections must enable `PRAGMA foreign_keys=ON`.
-- **23 foreign keys are required** and the sole optional FK is `pvl_settings.default_currency`; all use `NO ACTION` on deletes and updates. Do not rely on automatic cascading deletion. Both history `id_account` foreign keys are `NOT NULL`, as are history `date` and `amount`.
+- **25 foreign keys are required** and the sole optional FK is `pvl_settings.default_currency`; all use `NO ACTION` on deletes and updates. Do not rely on automatic cascading deletion. Both history `id_account` foreign keys are `NOT NULL`, as are history `date` and `amount`. Both new income account references and their `name`, `amount`, `status`, `date` fields are also `NOT NULL`.
 - The unique `ux_pvl_currencies_iso` index allows multiple `NULL` ISO codes; country ISO has no schema-level uniqueness constraint.
-- Financial `amount` fields are SQLite `REAL`, not fixed precision. Existing financial amounts are nullable; the two new history-table `amount` fields are **NOT NULL**. Rounding and eventual decimal migration need a policy.
+- Financial `amount` fields are SQLite `REAL`, not fixed precision. Earlier financial amounts remain nullable as originally defined; both history and both income `amount` fields are **NOT NULL**. Rounding and eventual decimal migration need a policy.
 - Historical balances are snapshots, not transaction deltas or live account balances; no SQL triggers reconcile the two representations. Neither history table enforces a unique `(id_account, date)` pair or supplies an index on it.
-- The v0.6.1 schema initialization script has no `DROP TABLE` statements but uses non-idempotent fixed-ID reference inserts. Treat one-time seeding separately from repeatable schema detection.
+- Both income tables require `date INTEGER NOT NULL` and `status INTEGER NOT NULL`. Income statuses have **no approved mappings**; planned expense codes 0–3 do not apply by implication. Income tables have no separate currency field or FK to one another.
+- The v0.7.1 schema is a **derived** revision: do not run the unchanged `pvledger(7).sql` and claim its two income date columns exist.
+- The v0.7.1 schema described by the reference has no `DROP TABLE` statements but uses non-idempotent fixed-ID reference inserts. Treat one-time seeding separately from repeatable schema detection.
 - `pvl_settings` must contain exactly one row **by application rule**; SQL itself does not enforce it.
 - `db_version` is a database schema version, **not** the document version or app binary version.
 - Recurrence frequency, role permissions, other integer flags, and detailed billing/interest conventions are not specified by the schema.
 
 ### 10.2 Repository and adapter design (proposed)
 
-Define interfaces such as `IDatabaseConnection`, `IAccountRepository`, `IAccountHistoryRepository`, `IExpenseRepository`, `ISettingsRepository`, `IUserRepository`, and `IMigrationRunner`. Oat++ controllers call services; services call repositories. Central business rules should not depend on SQLite-specific SQL. Use dedicated per-engine SQL when syntax differs.
+Define interfaces such as `IDatabaseConnection`, `IAccountRepository`, `IAccountHistoryRepository`, `IIncomeRepository`, `IPlannedIncomeRepository`, `IExpenseRepository`, `ISettingsRepository`, `IUserRepository`, and `IMigrationRunner`. Oat++ controllers call services; services call repositories. Central business rules should not depend on SQLite-specific SQL. Use dedicated per-engine SQL when syntax differs.
 
 **Engine policy:**
 
@@ -504,13 +552,14 @@ An engine switch is a new connection target, **not an automatic cross-engine mig
 
 ### 10.3 Initialization and migration policy
 
-1. **Fresh database only:** create the **18-table** v0.6.1 schema from the approved SQL and import the 430 fixed-ID reference seed rows exactly once. Its `CREATE TABLE IF NOT EXISTS` statements do not make the full script safe to rerun, because the seed `INSERT`s can conflict.
-2. **Existing database:** read singleton `pvl_settings.db_version` and compare it with supported migration versions. Do not reset the application or reinsert fixed reference IDs on restart.
-3. **Upgrade from DB v0.5:** use an additive migration that creates `pvl_account_history_current` and `pvl_account_history_savings` with `id_account`, `date`, and `amount` all `NOT NULL`, retaining existing data and without reapplying seeds.
-4. **Upgrade from DB v0.6:** before enforcing the corrected `pvl_account_history_current.id_account NOT NULL`, check existing history rows for `NULL` account references. Resolve affected rows through an explicit data-preservation policy; **only then** perform a safe SQLite table rebuild if necessary, verify foreign-key integrity, and record the completed schema version. Do not silently delete or guess the parent account for orphan records.
-5. **General upgrades:** create a recoverable backup, apply ordered data-preserving scripts, verify schema/relationships/data and update `db_version` only on successful completion. Never run destructive drop/recreate initialization on a populated database.
-6. Refuse unsupported downgrade and unknown newer schema versions with a clear error. Maintain engine-specific migrations and test them against real engines before enabling those backends.
-7. Require `PRAGMA foreign_keys=ON` for all SQLite application connections; verify the history constraints and the existing singleton settings invariant after initialization/migration.
+1. **Fresh database only:** Create the **20-table, 119-column v0.7.1** schema from the *derived and verified* v0.7.1 SQL. Import the 430 explicit-ID reference rows exactly once and create the first administrator separately. The schema uses `CREATE TABLE IF NOT EXISTS`, but the fixed-ID seed `INSERT`s are **not idempotent**; do not rerun the complete initializer on a populated instance.
+2. **Existing database:** Read the singleton `pvl_settings.db_version`, compare against supported migration versions, make a backup and run only the missing incremental migrations. Commit/update the tracked schema version only after validation succeeds. Do not reset application settings or duplicate seed data.
+3. **Earlier history migrations:** v0.5 → v0.6.1 adds the current/savings balance-history tables; v0.6 → v0.6.1 requires reconciling any `NULL pvl_account_history_current.id_account` links before rebuilding that table with `NOT NULL`. Do not discard orphaned history to force the migration.
+4. **v0.6.1 → v0.7:** Add `pvl_income` and `pvl_income_planned` without recreating the previous 18 tables or reseeding data. The database specification references `pvledger_migration_v0.6.1_to_v0.7.sql` for this step (a named external artifact, **not included with this application-spec update**).
+5. **v0.7 → v0.7.1:** Add `date INTEGER NOT NULL` to **both** income tables. The referenced `pvledger_migration_v0.7_to_v0.7.1.sql` is safe to execute automatically **only when both tables are empty**. The spec recommends running that SQLite script with `sqlite3 -bail`. Never blindly add a required column without a default to a populated SQLite table.
+6. **Populated v0.7 income tables:** **Block automatic migration**; inspect existing rows, gather accurate historic timestamps and use a specifically reviewed, data-preserving backfill/table-rebuild procedure to enforce `date NOT NULL`. Do **not** invent timestamps, silently create defaults, delete records, or claim migration success before verifying row counts and data.
+7. **General verification:** Check all 20 tables, both mandatory income dates, `25` required foreign keys (`26` total), source seed counts, and stored user/finance data; use `PRAGMA foreign_keys=ON` on every SQLite connection and `PRAGMA foreign_key_check` as part of validation. Refuse unknown newer schema versions and unsupported downgrades. For future PostgreSQL/MySQL/MariaDB backends, use engine-specific migration SQL.
+8. **Provenance rule:** `pvledger(7).sql` by itself is only **v0.7**, not final v0.7.1. The updated database specification names the derived `pvledger_schema_v0.7.1.sql` and migration files; obtain the actual approved files under `sql/sqlite/` before a build/deploy can claim v0.7.1 support.
 
 **Integration note:** Oat++ has a schema migration facility, but its version bookkeeping must be reconciled with the project requirement to keep the current schema version in `pvl_settings.db_version`. Use one authoritative migration flow or an explicitly synchronized design; do not maintain conflicting migration versions.
 
@@ -534,6 +583,8 @@ The browser UI should use a versioned, same-origin API prefix `/api/v1`. This is
 | Expense categories | `/api/v1/expense-categories` | CRUD |
 | Planned expenses | `/api/v1/planned-expenses` | CRUD and validated status changes |
 | Recurring expenses | `/api/v1/recurring-expenses` | CRUD only pending recurrence model |
+| Actual income | `GET /api/v1/income`, `GET /api/v1/income/{id}`; proposed `POST /api/v1/income`, `PATCH/DELETE /api/v1/income/{id}` | Account-scoped actual income records; writes/transition logic need approved status rules |
+| Planned income | `GET /api/v1/planned-income`, `GET /api/v1/planned-income/{id}`; proposed `POST /api/v1/planned-income`, `PATCH/DELETE /api/v1/planned-income/{id}` | Account-scoped planned income records; no automatic conversion to actual income |
 | Debts | `/api/v1/debts` | CRUD |
 | Taxes | `/api/v1/taxes` | CRUD |
 | Users | `/api/v1/users` | Admin CRUD; avoid exposing password digests |
@@ -546,8 +597,8 @@ The browser UI should use a versioned, same-origin API prefix `/api/v1`. This is
 
 **Proposed API conventions:**
 
-- Validate all IDs and foreign-key references; `404` for not found, `409` for integrity conflicts, `400`/`422` for invalid input, `401`/`403` for auth failures. For history, enforce existing parent account and non-null timestamp/balance, and get snapshot currency from its parent account; never expose history from another account without authorization.
-- List routes support `page`, `page_size`, `sort` and allowlisted filter parameters.
+- Validate all IDs and foreign-key references; `404` for not found, `409` for integrity conflicts, `400`/`422` for invalid input, `401`/`403` for auth failures. For history, enforce existing parent account and non-null timestamp/balance, and get snapshot currency from its parent account; never expose history from another account without authorization. For income, require an existing current account and non-NULL `name`, `amount`, integer `status`, and integer Unix `date`; derive display currency only from the linked current account. Until status mappings are approved, do not expose implicit processing/settlement actions or use planned-expense state codes.
+- List routes support `page`, `page_size`, `sort` and allowlisted filter parameters; proposed income filters include `id_account`, start/end `date`, and raw `status` code (without inventing labels).
 - Never expose password digest or database credentials in API responses.
 - Return consistent error JSON, e.g. `{"error":{"code":"VALIDATION_ERROR","message":"..."}}`, with localized display text as a separate concern.
 - The API must apply all authorization and user-data visibility rules independently of UI navigation.
@@ -631,8 +682,8 @@ pvledger/
 │   ├── bootstrap/
 │   ├── controllers/
 │   ├── dto/
-│   ├── services/                   # Includes proposed account-history service
-│   ├── repositories/               # Includes proposed account-history repository
+│   ├── services/                   # Proposed account-history and income services
+│   ├── repositories/               # Proposed account-history and income repositories
 │   │   ├── interfaces/
 │   │   └── sqlite/
 │   ├── migrations/
@@ -644,7 +695,7 @@ pvledger/
 │   ├── layout.html
 │   ├── login.html
 │   ├── setup/
-│   └── pages/
+│   └── pages/                     # Proposed income and planned-income views
 ├── js/                            # JavaScript files
 │   ├── menu.js
 │   └── app.js
@@ -670,7 +721,7 @@ pvledger/
 │   ├── sqlite/
 │   │   ├── schema_init.sql
 │   │   ├── seed_reference.sql
-│   │   └── migrations/             # Additive/history constraint fixes
+│   │   └── migrations/             # Additive history/income and date-column upgrades
 │   ├── postgresql/                # Later
 │   └── mariadb/                   # Later
 ├── tests/                         # Proposed test suites
@@ -746,7 +797,7 @@ The exact service configuration, image base, volume mappings, listening address,
 |---|---|
 | Privacy | Self-hosted operation; no required cloud connection or telemetry; user controls database and configuration files |
 | Security | Authentication, role checks, SQL parameterization, CSRF protection, HTML escaping, protected setup and plugin loading |
-| Data integrity | Enforce all 24 foreign keys (23 required); require non-null history account/date/amount, preserve snapshots and users on upgrade, use transactions for multi-record operations |
+| Data integrity | Enforce all 26 foreign keys (25 required); require non-null history account/date/amount and non-null income account/name/amount/status/date; preserve historical records, income records and users on upgrade; use transactions for multi-record operations |
 | Backup/restore | Document SQLite file-backup procedure and backup-before-migration policy; test restore |
 | Internationalization | UTF-8 for database/UI/YAML; locale fallback; translation-key validation |
 | Portability | Separate OS/platform paths and database integrations from business services |
@@ -763,12 +814,17 @@ The exact service configuration, image base, volume mappings, listening address,
 - SQLite first-run wizard creates schema, exactly one settings row, correct reference counts and first administrator.
 - Restart preserves data, selected language, theme, currency and instance name without rerunning seeds.
 - Unauthenticated requests cannot access financial pages/API; Viewer cannot modify; Read/Write cannot change admin settings.
-- Invalid FK, deletion with references and invalid planned status yield controlled errors.
+- Invalid FK, deletion with references and invalid planned-expense status yield controlled errors.
+- Both income tables reject missing `id_account`, `name`, `amount`, `status`, or `date`; reject nonexistent current accounts, non-integer status/date and invalid timestamp payloads; accept optional `description`.
+- Income and planned-income dates round-trip as Unix UTC seconds by draft convention. Status codes are not mapped to the four planned-expense statuses; display raw unknown status codes safely until mappings are approved.
+- Viewing/creating/correcting income must not silently mutate current-account balances or write history snapshots; planned income does not silently become actual income. Authorization checks apply via the related account and approved user-visibility policy.
 - Creating history rows without `id_account`, `date` or `amount` fails; an account history entry cannot refer to a nonexistent current/savings account or the wrong account type.
 - History `amount` is displayed as an absolute balance in the parent account currency; editing/viewing history never silently changes the live `pvl_accounts_current.amount` / `pvl_accounts_savings.amount`, or vice versa.
 - The schema itself permits more than one history record with an identical account/timestamp pair; tests do not assume a uniqueness constraint or `(id_account, date)` index exists.
-- Fresh v0.6.1 initialization creates 18 tables, 24 foreign keys and 430 reference rows exactly once; subsequent starts do not rerun fixed-ID seed inserts.
+- Fresh v0.7.1 initialization creates 20 tables, 119 columns, 26 foreign keys (25 required), required income dates and 430 reference rows exactly once; subsequent starts do not rerun fixed-ID seed inserts.
 - v0.5→v0.6.1 upgrade adds both history tables without destroying data; v0.6→v0.6.1 upgrade detects NULL current-history account links, blocks unsafe conversion and preserves the affected rows.
+- v0.6.1→v0.7 adds only the two income tables, preserving prior records and seed data. v0.7→v0.7.1 succeeds for empty income tables and blocks safely for populated ones until exact timestamps can be backfilled and NOT NULL constraints enforced by a reviewed rebuild.
+- Verify that raw `pvledger(7).sql` alone is *not* accepted as the v0.7.1 schema because it lacks both mandatory income `date` columns.
 - All available locale packs parse, required translation keys exist or fall back, Cyrillic/Kazakh/German Unicode renders correctly.
 - Malformed or incompatible plugin does not compromise startup; disabled plugin routes/menu are unavailable.
 - Migration runs once, preserves user entries and refuses downgrade/unsupported schema.
@@ -782,10 +838,10 @@ The exact service configuration, image base, volume mappings, listening address,
 | Phase | Deliverables | Completion check |
 |---|---|---|
 | **M0 — Skeleton** | CMake project following `src/`, `src/headers/`, `templates/`, `js/` and `docs/spec/`; root `README.md`, optional-deployment `Dockerfile` and `docker-compose.yaml`; `vpledger` executable, CLI, Oat++ server and tests | Native build works; Docker packaging can be validated separately |
-| **M1 — Storage & bootstrap** | YAML config, SQLite repo, 18-table v0.6.1 schema/one-time seed initialization, safe upgrades (v0.5 and v0.6) and singleton settings | Fresh setup and restart pass schema/integrity tests; no repeated fixed-ID seeds |
+| **M1 — Storage & bootstrap** | YAML config, SQLite repo, 20-table v0.7.1 schema/one-time seed initialization, staged upgrades from v0.5/v0.6/v0.6.1/v0.7 and singleton settings | Fresh setup and restart pass schema/integrity tests; no repeated fixed-ID seeds |
 | **M2 — Localization & wizard** | YAML locale loader, setup UI, first admin, persisted locale/instance/theme/currency | End-to-end first-run works in at least one completed locale |
 | **M3 — Security & base UI** | Login/logout, sessions, roles, templating, JS menu, themes | Role enforcement validated on pages and API |
-| **M4 — Financial modules** | CRUD/forms for banks, accounts, expenses, categories, planned/recurring, debts and taxes; dated balance history display for current/savings and an approved snapshot-entry workflow | Data validation, historical balance semantics and FK behaviors tested |
+| **M4 — Financial modules** | CRUD/forms for banks, accounts, expenses, categories, planned/recurring, debts and taxes; actual/planned income listing and status-aware forms after code rules are agreed; dated balance history display for current/savings and an approved snapshot-entry workflow | Data validation, income required fields and dates, historical balance semantics and FK behaviors tested |
 | **M5 — Plugins & stabilization** | Plugin registry/loader, safe defaults, documentation, backup/restore guidance, regression tests | Plugin enable/disable and upgrade tests pass |
 | **M6 — Future databases** | PostgreSQL support, then MariaDB/MySQL adapters and migrations | Each backend passes common integration suite |
 
@@ -818,8 +874,14 @@ These are **not** settled by the attached database contract or the original appl
 19. **Snapshot creation:** Should balances be captured manually, at day-end, periodically or on balance changes? Define time zone/day boundary and timestamp choice.
 20. **Snapshot corrections and duplicates:** Should multiple snapshots for one `(id_account, date)` be accepted, merged or rejected by application logic? Current SQL imposes no uniqueness constraint.
 21. **History retention and account deletion:** Define what happens to a current/savings account with dependent snapshots, given `NO ACTION` foreign keys. Specify any archived-account approach separately.
-22. **History performance:** Whether to add a composite index on `(id_account, date)` after measuring query needs; this index is absent from DB v0.6.1.
+22. **History performance:** Whether to add a composite index on `(id_account, date)` after measuring query needs; this index remains absent from DB v0.7.1.
 23. **Migration recovery:** How to resolve legacy v0.6 current-history rows with `NULL id_account` before enforcing v0.6.1's NOT NULL constraint, without losing balances.
+24. **Income status mappings:** Define values and transitions for `pvl_income.status` and `pvl_income_planned.status` separately; do not apply planned-expense `0`–`3` codes without approval.
+25. **Income event timestamps:** Confirm when `pvl_income.date` is recorded (receipt versus booking), and the meaning of `pvl_income_planned.date`; agree UTC epoch seconds, timezone display, and corrections.
+26. **Income accounting:** Should actual income automatically credit a linked current account? Define treatment on edits/deletes, negative amounts, transaction posting and optional balance snapshots; none is implied by SQL.
+27. **Planned income lifecycle:** Whether planned income may be converted/reconciled to actual income, whether duplicates are allowed, and how a link would be represented (the schema has no planned→actual FK).
+28. **Income currency and ownership:** Confirm using the linked current account's currency, and how record access is constrained through `id_account` and account `id_user`.
+29. **Populated v0.7 upgrade:** Determine how historical dates will be recovered and how the two income tables can be safely rebuilt while preserving all records. Auto-migration must block until resolved.
 
 ---
 
@@ -831,14 +893,15 @@ A first usable release is ready for review when all of the following are demonst
 - [ ] `vpledger -c <config-path>` starts a local Oat++ web server or launches secure first-run setup.
 - [ ] Valid YAML config controls SQLite path, port, language path, plugins path and themes path.
 - [ ] The wizard selects a locale, configures settings, creates the first admin and finishes without exposing setup routes afterward.
-- [ ] Database matches the attached v0.6.1 contract: **18 tables, 105 columns, 24 foreign keys (23 required, 1 optional), one explicit secondary index** and **430 reference rows imported once**.
+- [ ] Database matches the attached v0.7.1 contract: **20 tables, 119 columns, 26 foreign keys (25 required, 1 optional), one explicit secondary index** and **430 reference rows imported once**.
 - [ ] Exactly one `pvl_settings` record exists after setup; `db_version` is used for migrations.
 - [ ] Users can log in/out and role checks are enforced on both UI and API routes.
 - [ ] Browser pages and JavaScript-generated menu display from YAML translations and HTML templates.
-- [ ] All existing financial modules can be listed and edited where authorized; financial amount meanings/statuses match the DB spec.
+- [ ] Existing financial modules remain available with edits where authorized; amounts and the **planned-expense** status meanings match the DB spec. Income status values are not assigned invented meanings.
+- [ ] Actual and planned income can be listed by account/date, with records linked to existing current accounts; forms/APIs enforce required `id_account`, `name`, `amount`, `status` and `date`. Any income write or processing workflow follows separately approved status/business rules, with no unapproved account posting.
 - [ ] Current/savings account details can display historical absolute balances from their respective new history tables, with correct currency and timestamps; required history `id_account`, `date` and `amount` are validated.
 - [ ] Snapshot records are not treated as transactions or live balances; no unapproved automatic synchronization occurs, and the DB is not assumed to enforce unique snapshot times.
-- [ ] Fresh startup does not repeat fixed-ID seed inserts; v0.5 and v0.6 upgrade paths preserve existing data, including any legacy v0.6 rows needing null-account-link resolution.
+- [ ] Fresh startup does not repeat fixed-ID seed inserts; upgrades from v0.5, v0.6, v0.6.1 and v0.7 preserve existing data, including legacy v0.6 null history links and populated v0.7 income rows that need date backfill before a v0.7.1 migration.
 - [ ] Plugin discovery, registration and controlled enable/disable work with at least one sample plugin.
 - [ ] No unsafe cross-currency aggregation or unapproved automatic balance mutation is performed.
 - [ ] Restore/upgrade tests preserve an existing database; errors are logged without secrets.
@@ -850,7 +913,7 @@ A first usable release is ready for review when all of the following are demonst
 
 ## 18. References
 
-**Project reference (authoritative for schema):** `pvledger_database_spec(2).md`, **PVLedger Database Specification (Draft v0.6.1)**, supplied with this revision. It identifies `pvledger(6).sql` as its authoritative SQL source, including the corrected `pvl_account_history_current.id_account NOT NULL`. The SQL source is **not** attached to this specific message; bring the verified version-controlled SQL into the repository before implementing the initializer or migration scripts. The application specification does not replace column-by-column SQL details in the database specification.
+**Project reference (authoritative for schema):** `pvledger_database_spec(3).md`, **PVLedger Database Specification (Draft v0.7.1)**, supplied with this revision. It identifies `pvledger(7).sql` as the v0.7 baseline and describes the derived `pvledger_schema_v0.7.1.sql`, which adds **required `date INTEGER NOT NULL`** columns to `pvl_income` and `pvl_income_planned`. The actual SQL source, derived SQL and migration scripts are **not attached to this specific message**; obtain and verify the approved files under version control before implementing initializer/migrations. This application specification does not replace the authoritative column-by-column database specification.
 
 **Technical implementation references (official Oat++ documentation; checked November 2026):**
 
@@ -868,4 +931,5 @@ A first usable release is ready for review when all of the following are demonst
 | v0.1 | 2026-11-22 | Initial web application specification based on project requirements and database specification v0.5. |
 | v0.2 | 2026-11-22 | Confirmed root folder structure (`src/headers/`, `templates/`, `js/`, `docs/spec/`), root `README.md`, and optional Dockerfile/Compose build and deployment; aligned CMake, milestones and acceptance criteria. |
 | v0.3 | 2026-11-22 | Aligned with database spec v0.6.1: 18-table inventory; added current/savings balance histories and NOT NULL account/date/amount rules; clarified snapshot semantics/UI/API; added one-time seed safety, v0.5/v0.6 migration paths, tests, and unresolved snapshot policies. |
+| v0.4 | 2026-11-23 | Aligned with database spec v0.7.1: 20 tables, 119 columns, 26 FKs; two actual/planned income tables with mandatory dates, amounts, account links, names and statuses; proposed UI/API/services, safe staged migrations, validation and tests; unresolved income statuses and posting retained. |
 
