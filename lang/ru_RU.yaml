@@ -61,3 +61,10 @@ balance_timeline: История баланса
 data_tools: Данные
 import_file: Импорт
 export_file: Экспорт
+statuses:
+  "0": Запланировано
+  "1": Обработано
+  "2": Обработано с изменениями
+  "3": Отклонено
+theme_default: Светлая
+theme_dark: Тёмная

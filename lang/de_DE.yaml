@@ -61,3 +61,10 @@ balance_timeline: Kontostandsverlauf
 data_tools: Daten
 import_file: Importieren
 export_file: Exportieren
+statuses:
+  "0": Geplant
+  "1": Verarbeitet
+  "2": Mit Änderungen verarbeitet
+  "3": Abgelehnt
+theme_default: Hell
+theme_dark: Dunkel

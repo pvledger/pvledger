@@ -1,6 +1,8 @@
 #include "portability.hpp"
 #include <algorithm>
+#include <charconv>
 #include <cmath>
+#include <ctime>
 #include <set>
 
 namespace pvl {
@@ -99,6 +101,113 @@ std::string csvCell(const Value& value) {
     }
     return out + '"';
 }
+
+std::string exportDate(const Value& value, const char* format) {
+    const auto seconds = static_cast<std::time_t>(value.asInt64());
+    std::tm utc{};
+    char date[32];
+    require(gmtime_r(&seconds, &utc) && std::strftime(date, sizeof(date), format, &utc));
+    return date;
+}
+
+std::string exportAmount(double value) {
+    char buffer[400];
+    const auto output = std::to_chars(buffer, buffer + sizeof(buffer), value, std::chars_format::fixed);
+    require(output.ec == std::errc{});
+    return {buffer, output.ptr};
+}
+
+std::string exportText(const Value& value, std::size_t limit = std::string::npos) {
+    std::string out;
+    for (const unsigned char ch : value.asString()) {
+        if ((ch & 0xc0) != 0x80) {
+            if (!limit) break;
+            --limit;
+        }
+        out += ch < 32 ? ' ' : static_cast<char>(ch);
+    }
+    return out;
+}
+
+Response transactionExport(Repository& db, const std::string& name, const Dataset& source,
+                           const Selection& query, const std::string& format, bool download) {
+    const auto clauses = query.from + " JOIN pvl_currencies c ON c.id=" + source.currency + query.condition;
+    const auto summary = db.query("SELECT COUNT(*) AS n,COUNT(DISTINCT a.id) AS accounts,"
+        "COUNT(DISTINCT c.id) AS currencies,MIN(c.iso) AS iso,MIN(e.date) AS first,MAX(e.date) AS last,"
+        "MIN(a.id) AS account,MIN(a.amount) AS balance,MIN(a.id_currency) AS account_currency,"
+        "MIN(c.id) AS currency,COUNT(CASE WHEN typeof(e.date)='integer' AND e.date BETWEEN -62135596800 AND 253402300799"
+        " AND abs(e.amount)<=1.7976931348623157e308 THEN 1 END) AS valid" + clauses, query.args)[0];
+    const auto count = summary["n"].asInt64();
+    require(count > 0, "export_no_transactions");
+    require(summary["accounts"].asInt() == 1 && summary["currencies"].asInt() == 1, "export_single_scope");
+    require(summary["valid"].asInt64() == count, "export_incomplete_transactions");
+    const bool qif = format == "qif";
+    const auto iso = summary["iso"].asString();
+    require(qif || (iso.size() == 3 && iso.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZ") == std::string::npos),
+            "currency_missing");
+    const auto select = "SELECT e.id,e.date,e.name,e.description,e.amount,c.iso AS currency" +
+        clauses + " ORDER BY e.date,e.id";
+    if (!download) {
+        Value output;
+        for (const auto key : {"date", "name", "description", "amount", "currency"}) output["columns"].append(key);
+        output["total"] = count;
+        output["limit"] = resultLimit;
+        output["items"] = db.query(select + " LIMIT 10", query.args);
+        if (name == "expenses")
+            for (auto& row : output["items"]) row["amount"] = -row["amount"].asDouble();
+        return {200, "application/json; charset=utf-8", json(output)};
+    }
+    require(count <= resultLimit, "narrow_filters");
+    std::string body = "!Type:Bank\r\n";
+    constexpr const char* ofxDate = "%04Y%m%d%H%M%S";
+    const Value now = Json::Int64(std::time(nullptr));
+    constexpr const char* ok = "<STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS>";
+    if (!qif) {
+        body = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n"
+               "<?OFX OFXHEADER=\"200\" VERSION=\"220\" SECURITY=\"NONE\" OLDFILEUID=\"NONE\" NEWFILEUID=\"NONE\"?>\r\n"
+               "<OFX><SIGNONMSGSRSV1><SONRS>";
+        body += std::string(ok) + "<DTSERVER>" + exportDate(now, ofxDate) + "</DTSERVER>"
+                "<LANGUAGE>ENG</LANGUAGE></SONRS></SIGNONMSGSRSV1>\r\n"
+                "<BANKMSGSRSV1><STMTTRNRS><TRNUID>0</TRNUID>" + ok + "<STMTRS><CURDEF>" + iso +
+                "</CURDEF><BANKACCTFROM><BANKID>PVLedger</BANKID><ACCTID>P" + summary["account"].asString() +
+                "</ACCTID><ACCTTYPE>CHECKING</ACCTTYPE></BANKACCTFROM><BANKTRANLIST><DTSTART>" +
+                exportDate(summary["first"], ofxDate) + "</DTSTART><DTEND>" +
+                exportDate(summary["last"], ofxDate) + "</DTEND>\r\n";
+    }
+    for (const auto& row : limitedQuery(db, select, query.args)) {
+        const double amount = row["amount"].asDouble() * (name == "expenses" ? -1 : 1);
+        const auto payee = exportText(row["name"], qif ? std::string::npos : 32);
+        const auto memo = exportText(row["description"], qif ? std::string::npos : 255);
+        if (qif) {
+            body += "D" + exportDate(row["date"], "%m/%d/%04Y") + "\r\nT" + exportAmount(amount) +
+                    "\r\nP" + payee + "\r\n";
+            if (!memo.empty()) body += "M" + memo + "\r\n";
+            body += "^\r\n";
+        } else {
+            body += std::string("<STMTTRN><TRNTYPE>") + (amount < 0 ? "DEBIT" : "CREDIT") +
+                    "</TRNTYPE><DTPOSTED>" + exportDate(row["date"], ofxDate) + "</DTPOSTED><TRNAMT>" +
+                    exportAmount(amount) + "</TRNAMT><FITID>pvledger-" + name + "-" +
+                    row["id"].asString() + "</FITID><NAME>" + escape(payee) + "</NAME>";
+            const auto extendedName = exportText(row["name"], 100);
+            if (extendedName != payee) body += "<EXTDNAME>" + escape(extendedName) + "</EXTDNAME>";
+            if (!memo.empty()) body += "<MEMO>" + escape(memo) + "</MEMO>";
+            body += "</STMTTRN>\r\n";
+        }
+        require(body.size() <= 8 * 1024 * 1024, "narrow_filters");
+    }
+    if (!qif) {
+        body += "</BANKTRANLIST>";
+        if (summary["currency"] == summary["account_currency"] && summary["balance"].isNumeric() &&
+            std::isfinite(summary["balance"].asDouble()))
+            body += "<LEDGERBAL><BALAMT>" + exportAmount(summary["balance"].asDouble()) +
+                    "</BALAMT><DTASOF>" + exportDate(now, ofxDate) + "</DTASOF></LEDGERBAL>";
+        body += "</STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>\r\n";
+    }
+    const auto type = qif ? "application/qif" : format == "qfx" ? "application/vnd.intu.qfx" : "application/x-ofx";
+    Response result(200, type, std::move(body));
+    result.filename = "pvledger-" + name + "." + format;
+    return result;
+}
 Json::Int64 positiveId(const Value& value) {
     require(value.isIntegral() && value.isInt64() && value.asInt64() > 0);
     return value.asInt64();
@@ -168,7 +277,9 @@ Value report(Repository& db, const std::string& name, const Params& filters, int
 
 Response exportData(Repository& db, const Value& input, bool download, int role, Json::Int64 user) {
     require(input["dataset"].isString());
-    require(!input.isMember("format") || input["format"] == "csv", "csv_only");
+    require(!input.isMember("format") || input["format"].isString());
+    const auto format = input.get("format", "csv").asString();
+    require(format == "csv" || format == "qif" || format == "ofx" || format == "qfx", "export_format");
     auto name = input["dataset"].asString();
     const auto source = datasetFor(name);
     Params params;
@@ -179,6 +290,11 @@ Response exportData(Repository& db, const Value& input, bool download, int role,
         params[key] = value.asString();
     }
     auto query = selectData(source, params, role, user);
+    if (format != "csv") {
+        require(name == "expenses" || name == "income", "export_transaction_dataset");
+        require(!input.isMember("columns"), "export_fixed_columns");
+        return transactionExport(db, name, source, query, format, download);
+    }
     std::map<std::string, std::string> expressions;
     Value columns(Json::arrayValue);
     auto add = [&](const std::string& key, const std::string& expression) {

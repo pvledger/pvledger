@@ -61,3 +61,10 @@ balance_timeline: Шот қалдығының тарихы
 data_tools: Деректер
 import_file: Импорттау
 export_file: Экспорттау
+statuses:
+  "0": Жоспарланған
+  "1": Өңделген
+  "2": Өзгерістермен өңделген
+  "3": Қабылданбаған
+theme_default: Ашық
+theme_dark: Күңгірт

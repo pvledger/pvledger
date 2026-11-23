@@ -17,7 +17,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     if (response.status === 401 && !login) location.assign("/login");
     if (response.status === 204) return null;
-    if (response.ok && response.headers.get("Content-Type")?.startsWith("text/csv")) return response.blob();
+    if (response.ok && response.headers.get("Content-Disposition")?.startsWith("attachment")) return response.blob();
     if (!response.headers.get("Content-Type")?.includes("application/json")) throw new Error(await response.text());
     const body = await response.json();
     if (!response.ok) throw new Error(body.error?.message || labels["errors.internal"]);
@@ -78,6 +78,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     for (const [id, label] of entries) select.add(new Option(label, id));
     return select;
   };
+  const statusOptions = (prompt) => options([0, 1, 2, 3].map(code => [code, tr("statuses." + code)]), prompt);
+  const dateField = key => ["date", "billing_date", "from", "to"].includes(key);
+  const calendarDay = (value) => {
+    const seconds = Number(value);
+    return value != null && value !== "" && Number.isInteger(seconds) &&
+      seconds >= -62135596800 && seconds <= 253402300799
+      ? new Date(seconds * 1000).toISOString().slice(0, 10) : "";
+  };
+  const dateInput = () => Object.assign(node("input"), {type: "date", min: "0001-01-01", max: "9999-12-31"});
+  const unixTime = (input, end = false) => input.valueAsNumber / 1000 + (end ? 86399 : 0);
   const referenceLabels = new Map();
   const format = (key, value, route) => {
     if (value === null || value === undefined) return "—";
@@ -87,7 +97,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return new Intl.DateTimeFormat(locale, {dateStyle: "medium", timeStyle: "medium", timeZone: "UTC"})
         .format(new Date(value * 1000)) + " UTC";
     }
-    if (key === "status" && route === "planned-expenses" && Number.isInteger(value) && value >= 0 && value <= 3)
+    if (key === "status" && Number.isInteger(value) && value >= 0 && value <= 3)
       return tr("statuses." + value);
     if (typeof value === "number" && !key.startsWith("id") && key !== "status")
       return new Intl.NumberFormat(locale, {maximumFractionDigits: 10}).format(value);
@@ -139,11 +149,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     form.className = "filters";
     form.method = "get";
     for (const key of keys) {
-      const label = node("label", tr(key));
-      const input = referenceLabels.has(key) ? options(referenceLabels.get(key)) : node("input");
+      const label = node("label", tr(dateField(key) ? key + "_date" : key));
+      let input;
+      if (dateField(key)) input = dateInput();
+      else if (key === "status") input = statusOptions(tr("all_values"));
+      else input = options(referenceLabels.get(key));
       input.name = key;
-      if (input.tagName === "INPUT") input.type = "number";
-      input.value = query.get(key) || "";
+      input.value = dateField(key) ? calendarDay(query.get(key)) : query.get(key) || "";
       label.append(input);
       form.append(label);
     }
@@ -153,7 +165,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       const params = new URLSearchParams();
-      for (const [key, value] of new FormData(form)) if (value) params.set(key, value);
+      for (const [key, value] of new FormData(form)) {
+        if (value) params.set(key, dateField(key) ? unixTime(form.elements.namedItem(key), key === "to") : value);
+      }
       location.search = params.toString();
     });
     return form;
@@ -167,24 +181,32 @@ document.addEventListener("DOMContentLoaded", async () => {
       const name = field.name;
       if (name === "id" || name === "is_admin" || (name === "id_user" && actor.id_role !== 1)) continue;
       const label = node("label", tr(name));
-      const input = field.resource ? options(referenceLabels.get(name)) : node("input");
+      let input;
+      if (field.resource) input = options(referenceLabels.get(name));
+      else if (dateField(name)) input = dateInput();
+      else if (name === "status") input = statusOptions();
+      else input = node("input");
       input.name = name;
       input.required = Boolean(field.notnull || name === "username" || (!id && name === "password"));
       if (name === "password") {
         input.type = "password";
         input.autocomplete = "new-password";
         input.minLength = 12;
-      } else if (!field.resource && field.type !== "TEXT") {
+      } else if (input.tagName === "INPUT" && !dateField(name) && field.type !== "TEXT") {
         input.type = "number";
         input.step = field.type === "REAL" ? "any" : "1";
         if (name.startsWith("id_")) input.min = "1";
-        if (name === "status" && base === "planned-expenses") {
-          input.min = "0";
-          input.max = "3";
-        }
       }
-      if (name !== "password" && row?.[name] != null) input.value = row[name];
-      values.set(name, {field, input});
+      const current = row?.[name];
+      if (dateField(name)) input.value = calendarDay(current);
+      else if (name === "status" && current != null && (current < 0 || current > 3)) {
+        const legacy = new Option(tr("legacy_status") + " (" + current + ")", String(current));
+        legacy.disabled = true;
+        input.add(legacy);
+        input.value = legacy.value;
+      } else if (name !== "password" && current != null) input.value = current;
+      else if (!row && name === "id_currency" && actor.default_currency != null) input.value = actor.default_currency;
+      values.set(name, {field, input, initial: input.value});
       label.append(input);
       form.append(label);
     }
@@ -197,10 +219,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     form.append(save, error);
     submitted(form, async () => {
       const payload = {};
-      for (const [name, {field, input}] of values) {
+      for (const [name, {field, input, initial}] of values) {
         if (name === "password" && !input.value && id) continue;
         const value = input.value;
+        if (id && (dateField(name) || name === "status") && value === initial) continue;
         if (value === "") payload[name] = null;
+        else if (dateField(name)) payload[name] = unixTime(input);
+        else if (name === "status") payload[name] = Number(value);
         else if (field.type === "TEXT" || field.type === "INTEGER") payload[name] = value;
         else payload[name] = Number(value);
       }
@@ -217,7 +242,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     labels = translations;
     if (route.startsWith("data/") || route.startsWith("reports/")) {
       const {workflow} = await import("/assets/js/workflows.js");
-      await workflow({root, route, node, tr, table, lookup, options, format, request, locale});
+      await workflow({root, route, node, tr, table, lookup, options, format, request, locale,
+                      defaultCurrency: actor.default_currency, dateInput, unixTime, statusOptions});
       return;
     }
     const queryString = query.size ? "?" + query : "";

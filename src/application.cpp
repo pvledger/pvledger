@@ -11,8 +11,8 @@ const std::vector<Resource> resources = {
     {"accounts/current", "pvl_accounts_current", "current_accounts", Resource::Write, "id_user"},
     {"accounts/savings", "pvl_accounts_savings", "savings_accounts", Resource::Write, "id_user"},
     {"accounts/credit", "pvl_accounts_credit", "credit_accounts", Resource::Write, "id_user"},
-    {"income", "pvl_income", "income", Resource::Read, "id_account"},
-    {"planned-income", "pvl_income_planned", "planned_income", Resource::Read, "id_account"},
+    {"income", "pvl_income", "income", Resource::Write, "id_account"},
+    {"planned-income", "pvl_income_planned", "planned_income", Resource::Write, "id_account"},
     {"expenses", "pvl_expenses", "expenses", Resource::Write, "id_account"},
     {"planned-expenses", "pvl_expenses_planned", "planned_expenses", Resource::Write, "id_account"},
     {"recurring-expenses", "pvl_expenses_recurring", "recurring_expenses", Resource::Write, "id_account"},
@@ -184,7 +184,7 @@ Value fields(Repository& store, const Resource& resource) {
     return list;
 }
 
-Value checkedField(const std::string& name, const Value& value, const Value& field, const Resource& resource) {
+Value checkedField(const std::string& name, const Value& value, const Value& field) {
     const auto type = field["type"].asString();
     if (value.isNull()) {
         if (field["notnull"].asInt() || name == "username" || name == "password")
@@ -195,7 +195,7 @@ Value checkedField(const std::string& name, const Value& value, const Value& fie
         const auto n = number(value);
         if ((starts(name, "id_") && n < 1) ||
             (name == "id_role" && n > 3) ||
-            (name == "status" && std::string(resource.table) == "pvl_expenses_planned" && (n < 0 || n > 3)))
+            (name == "status" && (n < 0 || n > 3)))
             throw Error(422, "invalid_input");
         if (name == "date" || name == "billing_date") checkTime(n);
         return Json::Int64(n);
@@ -332,7 +332,7 @@ Value writeResource(Repository& db, const Resource& resource, const Request& req
         if (!keys.empty()) { keys += ','; placeholders += ','; }
         keys += create ? name : name + "=?";
         placeholders += '?';
-        arguments.push_back(checkedField(name, input[name], *field, resource));
+        arguments.push_back(checkedField(name, input[name], *field));
     }
     if (create) id = db.execute("INSERT INTO " + table + " (" + keys + ") VALUES (" + placeholders + ")", arguments);
     else {
@@ -476,6 +476,11 @@ Response Application::dispatch(const Request& request) {
         if (!themes.count(selected)) selected = "default";
         const auto css = themes.at(selected);
         if (!contained(config.themes, css)) throw Error(404, "not_found");
+        if (selected == "dark") {
+            const auto base = themes.at("default");
+            if (!contained(config.themes, base)) throw Error(404, "not_found");
+            return {200, "text/css; charset=utf-8", readFile(base) + "\n" + readFile(css)};
+        }
         return {200, "text/css; charset=utf-8", readFile(css)};
     }
     if (get && (path == "/api/v1/system/health" || path == "/api/v1/system/version")) {
@@ -507,7 +512,9 @@ Response Application::dispatch(const Request& request) {
     const auto themeOptions = [&] {
         const auto selected = settings["theme"].asString();
         return selectOptions(themes, selected.empty() ? "default" : selected,
-                             [](const auto& name, const auto&) { return name; });
+                             [&](const auto& name, const auto&) {
+                                 return name == "default" || name == "dark" ? tr("theme_" + name) : name;
+                             });
     };
     const auto validatePreferences = [&](const Value& input) {
         const auto language = stringField(input, "lang", 80);
@@ -617,6 +624,7 @@ Response Application::dispatch(const Request& request) {
 
     if (path == "/api/v1/auth/me" && get) {
         actor["csrf"] = csrf;
+        actor["default_currency"] = settings["default_currency"];
         return data(actor);
     }
     if (path == "/api/v1/auth/logout" && post) {
@@ -718,7 +726,13 @@ Response Application::dispatch(const Request& request) {
     }
     if (get && path == "/about")
         return page(tr("about"), "<h1>PVLedger</h1><p>" + escape(tr("slogan")) +
-                    "</p><p>" PVL_VERSION "</p>", csrf);
+                    "</p><p>" PVL_VERSION "</p>"
+                    "<p>(c) 2026 Vadim Prishlyak</p>"
+                    "<p><a href=\"mailto:pvadimr@pvadimr.com\">pvadimr@pvadimr.com</a></p>"
+                    "<p><a href=\"https://forge.pvadimr.com/pvledger/pvledger\">"
+                    "https://forge.pvadimr.com/pvledger/pvledger</a></p>"
+                    "<p><a href=\"https://www.gnu.org/licenses/agpl-3.0.html\">"
+                    "GNU Affero General Public License v3.0 (AGPL-3.0-only)</a></p>", csrf);
     if (get && starts(path, "/plugins/")) {
         const auto id = path.substr(9);
         const auto plugin = plugins.find(id);

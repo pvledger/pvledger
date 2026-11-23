@@ -108,7 +108,12 @@ errors:
   internal: PVLedger could not complete the request.
   preview_needed: Preview again. The review expired or the records changed.
   narrow_filters: Narrow the filters to export or chart fewer records.
-  csv_only: CSV is the supported export format.
+  export_format: Choose CSV, QIF, OFX, or QFX.
+  export_transaction_dataset: This format is available for actual expenses and actual income.
+  export_fixed_columns: This format uses a fixed set of transaction fields.
+  export_no_transactions: No transactions match the selected filters.
+  export_single_scope: Filter transactions to one account and one currency.
+  export_incomplete_transactions: Each exported transaction needs a valid date and amount. Adjust the filters or use CSV.
   expense_target: Select actual expenses as the import destination.
   invalid_expense: An expense needs a name, a valid date and a positive amount.
   currency_mismatch: The source currency differs from the selected currency.
@@ -175,7 +180,12 @@ dataset: Dataset
 export_fields: Choose filters and columns
 columns: Columns
 label: Label
-download_csv: Download CSV
+download: Download
+export_filters: Choose filters
+transaction_export_hint: Export actual transactions for one account and one currency. QFX import depends on the receiving app's financial institution requirements.
+legacy_status: Legacy status
+theme_default: Light
+theme_dark: Dark
 report_filters: Filters
 from_date: From date (UTC)
 to_date: Through date (UTC)

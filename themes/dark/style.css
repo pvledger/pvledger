@@ -1,0 +1,18 @@
+:root {
+  color-scheme: dark;
+  color: #e7edf3;
+  background: #141a20;
+  --accent: #86d9bd;
+  --line: #394852;
+  --surface: #1e2831;
+  --brand: #a5e7d1;
+  --navigation: #d7e6e5;
+  --navigation-active: #29443f;
+  --drawer-shadow: #0008;
+  --control-border: #748695;
+  --button-text: #101a19;
+  --danger: #f49b9d;
+  --danger-text: #ffadad;
+  --focus: #9dc5ff;
+  --table-header: #2a3943;
+}

@@ -18,7 +18,8 @@ function downloadBlob(blob, filename) {
 }
 
 export async function workflow(context) {
-  const {root, route, node, tr, table, lookup, options, request} = context;
+  const {root, route, node, tr, table, lookup, options, request,
+         defaultCurrency, dateInput, unixTime, statusOptions} = context;
   const panel = (title) => {
     const form = node("form");
     form.className = "form-panel";
@@ -67,6 +68,10 @@ export async function workflow(context) {
   const selectRef = async (form, key, resource, required) => {
     const control = options(await lookup(resource), tr(required ? "choose_value" : "all_values"));
     control.required = required;
+    if (key === "id_currency" && defaultCurrency != null) {
+      control.value = defaultCurrency;
+      if (control.selectedIndex < 0) control.selectedIndex = 0;
+    }
     return field(form, key, control);
   };
   const filterFields = async (form, dataset) => {
@@ -78,18 +83,18 @@ export async function workflow(context) {
       controls.id_currency = await selectRef(form, "id_currency", "currencies", false);
     }
     if (!reference && !dataset.startsWith("accounts/")) {
-      controls.from = field(form, "from_date", input("date"));
-      controls.to = field(form, "to_date", input("date"));
+      controls.from = field(form, "from_date", dateInput());
+      controls.to = field(form, "to_date", dateInput());
     }
     if (["income", "planned-income", "planned-expenses"].includes(dataset))
-      controls.status = field(form, "status", input("number"));
+      controls.status = field(form, "status", statusOptions(tr("all_values")));
     return () => {
       const filters = {};
       for (const [key, control] of Object.entries(controls)) {
         if (!control.value) continue;
         if (key === "from" || key === "to")
-          filters[key] = control.valueAsNumber / 1000 + (key === "to" ? 86399 : 0);
-        else filters[key] = control.value;
+          filters[key] = unixTime(control, key === "to");
+        else filters[key] = Number(control.value);
       }
       return filters;
     };
@@ -207,40 +212,59 @@ export async function workflow(context) {
 
   if (route === "data/export") {
     const scope = panel("export_scope");
+    const fileFormat = field(scope, "file_format", choice([
+      ["csv", "CSV · UTF-8"], ["qif", "QIF"], ["ofx", "OFX"], ["qfx", "QFX"]
+    ]));
     const dataset = field(scope, "dataset", choice(Array.from(datasets, ([id, key]) => [id, tr(key)])));
-    field(scope, "file_format", choice([["csv", "CSV · UTF-8"]]));
+    const compatibility = node("p", tr("transaction_export_hint"));
+    compatibility.hidden = true;
+    scope.append(compatibility);
+    fileFormat.onchange = () => {
+      const csv = fileFormat.value === "csv";
+      compatibility.hidden = csv;
+      for (const option of dataset.options)
+        option.hidden = option.disabled = !csv && !["expenses", "income"].includes(option.value);
+      if (!csv && !["expenses", "income"].includes(dataset.value)) dataset.value = "expenses";
+    };
     action(scope, "next", async () => {
       const source = dataset.value;
-      const form = panel("export_fields");
+      const format = fileFormat.value;
+      const form = panel(format === "csv" ? "export_fields" : "export_filters");
       const filters = await filterFields(form, source);
-      const initial = await request("export/preview", "POST", {dataset: source});
-      const fields = node("fieldset");
-      fields.append(node("legend", tr("columns")));
-      const checks = initial.columns.map(key => {
-        const check = input("checkbox");
-        check.checked = true;
-        const label = node("label", key.endsWith("_label") ? tr(key.slice(0,-6)) + " · " + tr("label") : tr(key));
-        label.className = "check";
-        label.prepend(check);
-        fields.append(label);
-        return [key, check];
-      });
-      form.append(fields);
+      const checks = [];
+      if (format === "csv") {
+        const initial = await request("export/preview", "POST", {dataset: source});
+        const fields = node("fieldset");
+        fields.append(node("legend", tr("columns")));
+        for (const key of initial.columns) {
+          const check = input("checkbox");
+          check.checked = true;
+          const label = node("label", key.endsWith("_label") ? tr(key.slice(0,-6)) + " · " + tr("label") : tr(key));
+          label.className = "check";
+          label.prepend(check);
+          fields.append(label);
+          checks.push([key, check]);
+        }
+        form.append(fields);
+      }
       back(form, () => root.replaceChildren(scope));
       action(form, "review", async () => {
         const columns = checks.filter(([,check]) => check.checked).map(([key]) => key);
-        if (!columns.length) throw new Error("choose_columns");
-        const payload = {dataset: source, format: "csv", columns, filters: filters()};
+        const payload = {dataset: source, format, filters: filters()};
+        if (format === "csv") {
+          if (!columns.length) throw new Error("choose_columns");
+          payload.columns = columns;
+        }
         const preview = await request("export/preview", "POST", payload);
         const review = panel("review");
         review.classList.add("review");
         review.append(node("p", tr(datasets.get(source)) + " · " + preview.total + " " + tr("records")),
-                      table(preview.items, columns, source));
+                      table(preview.items, payload.columns || preview.columns, source));
         back(review, () => root.replaceChildren(form));
         if (preview.total > preview.limit) review.append(node("p", tr("errors.narrow_filters")));
-        else action(review, "download_csv", async () => {
-          const csv = await request("export/download", "POST", payload);
-          downloadBlob(csv, "pvledger-" + source.replace("/", "-") + ".csv");
+        else action(review, "download", async () => {
+          const file = await request("export/download", "POST", payload);
+          downloadBlob(file, "pvledger-" + source.replace("/", "-") + "." + format);
         });
         root.replaceChildren(review);
       });
@@ -340,6 +364,7 @@ function timeline(canvas, rows, {format, locale}) {
   canvas.width = 720;
   canvas.height = 250;
   const ctx = canvas.getContext("2d");
+  const colors = getComputedStyle(canvas);
   ctx.font = "14px sans-serif";
   const min = Math.min(...rows.map(r => r.amount)), max = Math.max(...rows.map(r => r.amount));
   const start = rows[0].date, end = rows[rows.length - 1].date;
@@ -349,12 +374,12 @@ function timeline(canvas, rows, {format, locale}) {
   const y = v => max === min ? 110 : 200 - (v - min) / (max - min) * 180;
   ctx.strokeStyle = "#a6b4b0";
   ctx.beginPath(); ctx.moveTo(left, 14); ctx.lineTo(left, 205); ctx.lineTo(705,205); ctx.stroke();
-  ctx.fillStyle = "#304c48";
+  ctx.fillStyle = colors.color;
   ctx.fillText(bounds[0], 1, y(min) + 4);
   if (max !== min) ctx.fillText(bounds[1], 1, y(max) + 4);
   ctx.fillText(format("date", start, ""), left, 230);
   if (start !== end) { ctx.textAlign = "right"; ctx.fillText(format("date", end, ""), 710, 230); }
-  ctx.strokeStyle = ctx.fillStyle = "#17544b";
+  ctx.strokeStyle = ctx.fillStyle = colors.getPropertyValue("--accent").trim();
   ctx.lineWidth = 2;
   ctx.beginPath();
   rows.forEach((r,i) => i ? ctx.lineTo(x(r.date), y(r.amount)) : ctx.moveTo(x(r.date), y(r.amount)));

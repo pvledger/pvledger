@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 from urllib.parse import urlencode
+from xml.etree import ElementTree
 
 BINARY = Path(sys.argv[1]).resolve()
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +43,7 @@ class Client:
             cookie = reply.getheader("Set-Cookie")
             text = reply.read().decode()
             assert reply.status == status, (method, path, status, reply.status, text)
+            self.attachment = reply.getheader("Content-Disposition")
             if cookie is not None:
                 self.cookie = cookie.split(";")[0]
             if text and "application/json" in reply.getheader("Content-Type", ""):
@@ -159,6 +161,29 @@ def data_workflows(client, account, savings):
                     "countries", "currencies", "expense-categories"):
         result = client.request(api + "export/preview", method="POST", payload={"dataset": dataset})
         assert "password" not in result["columns"]
+    selection = {"dataset": "expenses", "filters": {"id_account": account, "id_currency": 1}}
+    for format in ("qif", "ofx", "qfx"):
+        request = {**selection, "format": format}
+        preview = client.request(api + "export/preview", method="POST", payload=request)
+        assert preview["total"] == 2 and [row["amount"] for row in preview["items"]] == [-12.5, -12.5]
+        body = client.request(api + "export/download", method="POST", payload=request)
+        assert client.attachment == f'attachment; filename="pvledger-expenses.{format}"'
+        if format == "qif":
+            assert body.splitlines() == ["!Type:Bank", "D11/14/2023", "T-12.5", "P" + names[0], "^",
+                                        "D11/14/2023", "T-12.5", "P" + names[1], "^"]
+        else:
+            xml = ElementTree.fromstring(body)
+            assert xml.findtext(".//CURDEF")
+            assert xml.findtext(".//LEDGERBAL/BALAMT") == "500.5"
+            rows = xml.findall(".//STMTTRN")
+            assert [row.findtext("NAME") for row in rows] == names
+            assert all(row.findtext("DTPOSTED") == "20231114221320" for row in rows)
+            assert all(row.findtext("TRNAMT") == "-12.5" and row.findtext("TRNTYPE") == "DEBIT" for row in rows)
+            assert len({row.findtext("FITID") for row in rows}) == 2
+    body = client.request(api + "export/download", method="POST", payload={"dataset": "income", "format": "ofx"})
+    assert ElementTree.fromstring(body).findtext(".//STMTTRN/TRNAMT") == "123.25"
+    client.request(api + "export/preview", 422, "POST", {"dataset": "expenses", "format": "ofx"})
+    client.request(api + "export/download", 422, "POST", {"dataset": "accounts/current", "format": "qif"})
     client.request(api + "export/download", 422, "POST", {**expense_export, "format": "ofx"})
     client.request(api + "export/download", 403, "POST", {"dataset": "users"})
     client.request(api + "export/download", 422, "POST", {**expense_export, "columns": ["password"]})
@@ -187,6 +212,13 @@ def exercise(directory):
         client.request("/api/v1/auth/login", 403, "POST", {"username": "admin", "password": PASSWORD})
         client.login("admin")
         assert "&lt;Local &amp; private&gt;" in client.request("/")
+        about = client.request("/about")
+        assert "(c) 2026 Vadim Prishlyak" in about
+        assert '<a href="mailto:pvadimr@pvadimr.com">pvadimr@pvadimr.com</a>' in about
+        source_url = "https://forge.pvadimr.com/pvledger/pvledger"
+        assert f'<a href="{source_url}">{source_url}</a>' in about
+        assert ('<a href="https://www.gnu.org/licenses/agpl-3.0.html">'
+                'GNU Affero General Public License v3.0 (AGPL-3.0-only)</a>') in about
         assert client.request("/assets/js/app.js").startswith('"use strict"')
         api = "/api/v1/"
         assert len(client.request(api + "ui/menu")) > 10
@@ -211,6 +243,11 @@ def exercise(directory):
         client.request(api + "settings", 200, "PATCH", {"lang": "de_DE"})
         assert "Übersicht" in client.request("/")
         client.request(api + "settings", 200, "PATCH", {"lang": "en_US"})
+        assert '<option value="dark">Dark</option>' in client.request("/settings")
+        client.request(api + "settings", 200, "PATCH", {"theme": "dark", "default_currency": 2})
+        assert client.request(api + "auth/me")["default_currency"] == 2
+        dark_css = client.request("/assets/theme.css")
+        assert "color-scheme: dark" in dark_css and ".form-panel" in dark_css
         plugins = client.request(api + "plugins")
         sample = next(plugin for plugin in plugins if plugin["path"] == "example.sample")
         client.request("/plugins/example.sample", 404)
@@ -238,8 +275,20 @@ def exercise(directory):
         for route in ("income", "planned-income"):
             result = client.request(api + route + f"?id_account={account}&from=1700000000&status=17")
             assert result["total"] == 1 and result["items"][0]["status"] == 17
+            assert result["writable"]
             assert result["items"][0]["date"] == 1_700_000_000
-            client.request(api + route, 403, "POST", {"status": 17})
+            legacy = result["items"][0]
+            assert client.request(api + route + f"/{legacy['id']}", 200, "PATCH",
+                                  {"description": "Legacy record"})["status"] == 17
+            entry = {"id_account": account, "name": "Salary", "amount": 42.75, "date": 1735689600, "status": 0}
+            for key in entry:
+                client.request(api + route, 422, "POST", {k: v for k, v in entry.items() if k != key})
+            client.request(api + route, 422, "POST", {**entry, "status": 4})
+            created = client.request(api + route, 201, "POST", entry)
+            assert all(created[key] == value for key, value in entry.items())
+            detail = api + route + f"/{created['id']}"
+            assert client.request(detail, 200, "PATCH", {"status": 2})["status"] == 2
+            client.request(detail, 204, "DELETE")
         assert client.request(api + f"accounts/current/{account}")["amount"] == 500.5
         assert client.request(api + f"accounts/current/{account}/history")["total"] == 2
         assert client.request(api + f"accounts/savings/{savings}/history")["items"][0]["amount"] == 900
@@ -255,6 +304,7 @@ def exercise(directory):
         client.request(api + "import/preview", 403, "POST", {})
         client.request("/data/import", 403)
         assert client.request(api + "income")["total"] == 0
+        client.request(api + "income", 403, "POST", {"id_account": account})
         client.request(api + f"accounts/current/{account}/history", 404)
         client.request(api + "banks", 403, "POST", {"name": "Viewer", "id_countries": 1})
         client.login("writer")
@@ -263,12 +313,17 @@ def exercise(directory):
         client.request(api + "settings", 403, "PATCH", {"lang": "ru_RU"})
         client.request(api + "income/1", 404)
         client.request(api + "debts", 422, "POST", {"name": "Other account", "id_account": account})
-        client.request(api + "accounts/current", 201, "POST",
-                       {"name": "Owned by writer", "id_bank": bank, "id_currency": 1})
+        owned_account = client.request(api + "accounts/current", 201, "POST",
+                                       {"name": "Owned by writer", "id_bank": bank, "id_currency": 1})["id"]
+        for route in ("income", "planned-income"):
+            entry = {"id_account": owned_account, "name": "Owned income", "amount": 30, "date": 0, "status": 1}
+            client.request(api + route, 422, "POST", {**entry, "id_account": account})
+            client.request(api + route, 201, "POST", entry)
 
     with server(path, port) as client:
         client.login("admin")
         assert client.request("/api/v1/settings")["instance_name"] == "<Local & private>"
+        assert client.request("/api/v1/settings")["theme"] == "dark"
         assert client.request("/api/v1/accounts/current")["total"] == 2
         with sqlite3.connect(database) as db:
             verify_schema(db)

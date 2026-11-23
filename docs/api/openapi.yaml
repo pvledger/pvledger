@@ -898,6 +898,24 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Add actual income
+      parameters:
+        - $ref: '#/components/parameters/csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/IncomeFields'
+                - required: [id_account, name, amount, date, status]
+      responses:
+        '201': {description: Created}
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /income/{id}:
     parameters:
       - $ref: '#/components/parameters/id'
@@ -913,6 +931,31 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+    patch:
+      summary: Update actual income
+      parameters:
+        - $ref: '#/components/parameters/csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IncomeFields' }
+      responses:
+        '200': {description: Updated}
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Delete actual income
+      parameters:
+        - $ref: '#/components/parameters/csrf'
+      responses:
+        '204': {description: Deleted}
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /planned-income:
     get:
       summary: List planned income
@@ -934,6 +977,24 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Add planned income
+      parameters:
+        - $ref: '#/components/parameters/csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/IncomeFields'
+                - required: [id_account, name, amount, date, status]
+      responses:
+        '201': {description: Created}
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /planned-income/{id}:
     parameters:
       - $ref: '#/components/parameters/id'
@@ -949,6 +1010,31 @@ paths:
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+    patch:
+      summary: Update planned income
+      parameters:
+        - $ref: '#/components/parameters/csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IncomeFields' }
+      responses:
+        '200': {description: Updated}
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Delete planned income
+      parameters:
+        - $ref: '#/components/parameters/csrf'
+      responses:
+        '204': {description: Deleted}
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
   /debts:
     get:
       summary: List debts
@@ -1304,7 +1390,7 @@ paths:
         '429': { $ref: '#/components/responses/Error' }
   /auth/me:
     get:
-      summary: Read signed-in user and CSRF token
+      summary: Read signed-in user, CSRF token and instance default currency ID
       responses:
         '200':
           description: Success
@@ -1525,7 +1611,7 @@ paths:
               required: [dataset]
               properties:
                 dataset: {type: string, enum: [accounts/current, accounts/savings, accounts/credit, history/current, history/savings, expenses, planned-expenses, recurring-expenses, expense-categories, income, planned-income, debts, taxes, banks, countries, currencies]}
-                format: {type: string, enum: [csv]}
+                format: {type: string, enum: [csv, qif, ofx, qfx], default: csv}
                 columns: {type: array, items: {type: string}, uniqueItems: true, minItems: 1}
                 filters:
                   type: object
@@ -1540,15 +1626,19 @@ paths:
         '422': { $ref: '#/components/responses/Error' }
   /export/download:
     post:
-      summary: Download the authorized selection as UTF-8 CSV
+      summary: Download the authorized selection
+      description: CSV supports all listed datasets and column selection. QIF, OFX and QFX accept only actual expenses or income from one account and currency, with fixed columns.
       parameters:
         - $ref: '#/components/parameters/csrf'
       requestBody: *exportRequest
       responses:
         '200':
-          description: A spreadsheet-safe CSV attachment
+          description: A named attachment of the requested format
           content:
             text/csv: {schema: {type: string, format: binary}}
+            application/qif: {schema: {type: string, format: binary}}
+            application/x-ofx: {schema: {type: string, format: binary}}
+            application/vnd.intu.qfx: {schema: {type: string, format: binary}}
         '422': { $ref: '#/components/responses/Error' }
   /reports/expense-categories:
     get:
@@ -1692,6 +1782,19 @@ components:
     Array:
       type: array
       items: { $ref: '#/components/schemas/Object' }
+    IncomeFields:
+      type: object
+      additionalProperties: false
+      properties:
+        id_account: {type: integer, minimum: 1}
+        name: {type: string}
+        amount: {type: number}
+        date: {type: integer, format: int64, description: UTC epoch seconds}
+        status:
+          type: integer
+          enum: [0, 1, 2, 3]
+          description: 0 Planned, 1 Processed, 2 Processed with changes, 3 Declined
+        description: {type: string, nullable: true}
     Credentials:
       type: object
       required: [username, password]

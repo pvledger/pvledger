@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 ARG BUILD_JOBS=4
 WORKDIR /source
-COPY CMakeLists.txt ./
+COPY CMakeLists.txt LICENSE ./
 COPY cmake ./cmake
 COPY src ./src
 COPY templates ./templates
