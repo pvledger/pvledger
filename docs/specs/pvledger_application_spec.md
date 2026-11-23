@@ -1,13 +1,13 @@
 # PVLedger — Web Application Specification
 
-**Document version:** Draft v0.4  
+**Document version:** Draft v0.5  
 **Date:** 2026-11-23  
 **Product:** PVLedger  
 **Slogan (as supplied):** “Manager your personal assets with privacy”  
 **Document status:** Working draft — requirements and proposed architecture; not a final implementation contract  
 **Database reference:** `pvledger_database_spec(3).md` — *PVLedger Database Specification, Draft v0.7.1* (derived by that specification from `pvledger(7).sql`; adds `date INTEGER NOT NULL` to both new income tables)  
 **Target release:** v1 (SQLite-first)  
-**Scope of this revision:** Align the application with database spec v0.7.1 (20 tables/119 columns), adding actual and planned income, mandatory Unix timestamps, income APIs/UI/test requirements and migration-safe upgrade guidance. Preserve the existing repository structure, architecture, history support and optional Docker deployment.
+**Scope of this revision:** Carry forward all v0.4 requirements and database spec v0.7.1 (20 tables/119 columns), and add the corrected `pvledger` executable name, statically linked core build, left-hand vertical navigation, database-populated reference selectors, file import/export wizards and chart-based reporting. No database schema changes are authorized by v0.5.
 
 > **Reading guide:** **Required** means supplied by the project owner or established in the attached database specification. **Proposed** is a starting implementation choice that may be changed. **Later** means explicitly deferred or not yet specified. The database specification and its source SQL govern the *existing* schema; this document must not be read as permission to modify it silently.
 
@@ -24,6 +24,7 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 3. Separate application code, HTML templates, JavaScript menu behavior, YAML translations, data access, and plugins.
 4. Support a first-run initialization workflow and safe future schema upgrades.
 5. Make future database engines and extensions possible without redesigning the whole application.
+6. Offer controlled file-based import/export and accessible financial reporting without requiring a cloud service.
 
 ### 1.2 Scope and terminology
 
@@ -36,6 +37,10 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 - **Historical balance snapshot:** A dated *account balance* record in `pvl_account_history_current` or `pvl_account_history_savings`; it is not a transaction, cash flow, or live account balance.
 - **Locale:** String such as `en_US`, `ru_RU`, `kk_KZ`, or `de_DE` corresponding to a YAML language file.
 - **Plugin:** A locally installed extension discovered from the configured plugins directory and managed through the application registry.
+- **Reference selector:** A form field backed by an existing database relationship; it stores the referenced record ID but shows a human-readable name/display name/username.
+- **Import:** User-initiated file parsing, review, mapping and validated writes to existing PVLedger records; not bank synchronization.
+- **Export:** User-initiated, authorized extraction of selected records into a downloadable file.
+- **Report:** A filtered, read-only representation of persisted financial records, shown as charts and accessible tables.
 
 **Outside v1 unless separately approved:** bank synchronization, online accounts/cloud services, investment portfolios, market-rate currency conversion, attachments, payment initiation, and automatic tax filing. The word *assets* in the product name/slogan does not imply that the current database already models real estate, vehicles, or securities.
 
@@ -44,13 +49,13 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 | Area | v1 | Later |
 |---|---|---|
 | Backend | C++ / Oat++ | Continue same core |
-| Build | CMake | — |
+| Build | CMake; **statically linked core `pvledger` executable** | Platform/toolchain and plugin compatibility validation |
 | Database | SQLite | PostgreSQL; MariaDB / MySQL |
-| UI | Server-rendered HTML placeholders + JavaScript-generated menu | Optional richer UI |
+| UI | Server-rendered HTML placeholders + JavaScript-generated **left-side vertical menu**, database-backed selectors | Optional richer UI |
 | Languages | File-backed locale system; initial `en_US`, with `ru_RU`, `kk_KZ`, `de_DE` supported as language-pack targets | Additional YAML packs |
 | Authentication | Local users and roles | External identity integrations only if approved |
 | Plugin system | Discover, validate, enable/disable registered local plugins; minimal extension API | Wider extension API, distribution and compatibility guarantees |
-| Financial features | Work with records represented by the current 20-table database, including current/savings balance history and actual/planned income | Additional accounting/asset models after schema changes |
+| Financial features | Work with records represented by the current 20-table database, including current/savings balance history and actual/planned income; add user-driven CSV/QIF/OFX/QFX import, export and reports | Additional accounting/asset models after schema changes |
 
 ---
 
@@ -61,17 +66,17 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 | Layer | Technology | Notes |
 |---|---|---|
 | Backend / HTTP | **C++ with Oat++** | Controllers, request/response DTOs, routing, web server |
-| Build | **CMake** | One executable named `vpledger` |
+| Build | **CMake** | Executable target and output filename **`pvledger`**; statically linked core release binary |
 | Database — v1 | **SQLite** | Oat++ SQLite adapter or equivalent dedicated repository implementation |
 | Database — later | **PostgreSQL**, **MariaDB / MySQL** | Backend interfaces and engine-specific SQL/migrations |
 | Database scripts | **SQL** | Initial schema, seed data, incremental migrations |
 | Server views | **HTML templates with placeholders** | No SPA framework required |
-| Client behavior | **JavaScript** | Menu building, localized dynamic messages and simple interactions |
+| Client behavior | **JavaScript** | Left-side vertical menu, database-backed selectors, import/export wizard steps, report chart interactions |
 | Localization | **YAML files** | One file per locale, e.g. `en_US.yaml` |
 | File configuration | **YAML** | `config.yaml` |
 | Themes | CSS and related assets | Theme selected in database, resources loaded from themes path |
 
-**Proposed technical baseline:** C++17 or newer, with dependency versions pinned and validated by CI. Do not assume that PostgreSQL and MariaDB/MySQL share identical SQL or Oat++ adapters. Oat++ documents `oatpp-sqlite` and `oatpp-postgresql`; a MariaDB/MySQL data-access strategy still needs to be selected.
+**Proposed technical baseline:** C++17 or newer, with dependency versions pinned and validated by CI. **Required release packaging:** link the `pvledger` executable and its required core dependencies statically on supported release targets; exact toolchain and compatibility tests are specified in §13.4–13.6. Do not assume that PostgreSQL and MariaDB/MySQL share identical SQL or Oat++ adapters. Oat++ documents `oatpp-sqlite` and `oatpp-postgresql`; a MariaDB/MySQL data-access strategy still needs to be selected.
 
 ### 2.2 Runtime deployment (proposed)
 
@@ -88,8 +93,8 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 
 | ID | Requirement | Status | Priority |
 |---|---|---|---|
-| APP-001 | Launch `vpledger -c /path_to_config_file` | Required | Must |
-| APP-002 | Support `vpledger --help` and `vpledger --version` | Required | Must |
+| APP-001 | Launch `pvledger -c /path_to_config_file` | Required | Must |
+| APP-002 | Support `pvledger --help` and `pvledger --version` | Required | Must |
 | APP-003 | Load and validate file-based settings from `config.yaml` | Required | Must |
 | APP-004 | Use SQLite in v1 and preserve an interface for future database backends | Required | Must |
 | APP-005 | Detect uninitialized instance and start a first-run wizard | Required | Must |
@@ -128,6 +133,16 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 | APP-038 | Support v0.6.1 → v0.7 additive income-table migration and v0.7 → v0.7.1 mandatory-date migration (only automatically for empty income tables) | Required by DB migration contract | Must |
 | APP-039 | When migrating populated v0.7 income tables, block unsafe date-column enforcement pending accurate historic backfill and a reviewed table rebuild | Required by DB migration contract | Must |
 | APP-040 | Preserve the existing current/savings balance-history behavior and the 430 seed records | Required by DB v0.7.1 | Must |
+| APP-041 | Name the generated CMake executable and installed CLI command **`pvledger`** (not `vpledger`) | Required by owner, v0.5 | Must |
+| APP-042 | Produce a **statically linked** `pvledger` core release binary and verify its linkage on each supported target | Required by owner, v0.5 | Must |
+| APP-043 | Place a **vertical primary menu along the left edge** of the desktop web layout | Required by owner, v0.5 | Must |
+| APP-044 | Populate fields representing database foreign keys from their referenced tables, displaying human-friendly names/display names/usernames while submitting actual IDs | Required by owner, v0.5 | Must |
+| APP-045 | Provide a file-based **Import Wizard** accepting CSV, QIF and OFX/QFX inputs | Required by owner, v0.5 | Must |
+| APP-046 | Provide a guided **Export Wizard** to select records, filters and file output, with safe download behavior | Required by owner, v0.5 | Must |
+| APP-047 | Provide a **Reports** menu with pie charts for suitable categorical financial breakdowns | Required by owner, v0.5 | Must |
+| APP-048 | Provide balance-versus-time charts based on stored current/savings history snapshots | Required by owner, v0.5 | Must |
+| APP-049 | Import preview, account/column mapping, validation, duplicate review and error reporting occur before committing records | Proposed safeguards to satisfy import safely | Must |
+| APP-050 | Exports and reports are role- and account-scoped, currency-aware and do not fabricate missing accounting data | Proposed safeguards to satisfy export/report safely | Must |
 
 ### 3.1 Main UI pages and modules
 
@@ -140,9 +155,12 @@ PVLedger is a privacy-oriented, self-hosted web application for managing persona
 | Liabilities | Debts, taxes | `pvl_debts`, `pvl_taxes` |
 | Reference data | Banks, currencies, countries | `pvl_banks`, `pvl_currencies`, `pvl_countries` |
 | Administration | Users, roles, plugins, instance settings | `pvl_users`, `pvl_user_roles`, `pvl_plugins`, `pvl_settings` |
+| Data import | Import wizard; upload file, select format, map fields/accounts, preview, validate, confirm and review results | File input → explicit mappings to existing tables; no new import table required |
+| Data export | Export wizard; choose dataset, format, filters, fields and download | Read-only extraction from authorized existing tables |
+| Reports | Pie charts for categories and other valid breakdowns; balance-vs-time line charts; date/account/currency filters and accessible data tables | Aggregates of existing finance tables; current/savings histories for time series |
 | System | Login, first-run setup, help/about, error pages | Application services |
 
-**Proposed navigation:** Dashboard · Accounts (Current / Savings / Credit, with account-detail Balance History tabs for Current and Savings) · Income (Actual / Planned) · Expenses (Actual / Planned / Recurring / Categories) · Debts · Taxes · Banks · Administration (Users / Plugins / Settings) · Reference Data (Countries / Currencies) · About.
+**Required navigation placement:** a **vertical sidebar on the left** on desktop/tablet layouts. **Proposed menu order:** Dashboard · Accounts (Current / Savings / Credit; Balance History on Current/Savings account detail) · Income (Actual / Planned) · Expenses (Actual / Planned / Recurring / Categories) · Debts · Taxes · Banks · **Reports** (Expense Breakdown / Income Overview / Balance History) · **Data** (Import / Export) · Administration (Users / Plugins / Settings) · Reference Data (Countries / Currencies) · About. Child items should expand beneath the parent item. On narrow screens, preserve the menu as a left-origin sliding drawer opened by an accessible menu control; do not change it to a top horizontal desktop menu.
 
 **CRUD behavior:** All forms validate required relationships, show readable errors, and prevent deletion of records that are still referenced by foreign keys. Reference seeds must not be reset on application restarts. A Viewer can see only authorized records; menu hiding is cosmetic, not a security boundary.
 
@@ -229,6 +247,56 @@ The database adds **two** income tables in v0.7, then v0.7.1 makes their respect
 **Validation:** `date` must be an integer Unix timestamp, with UTC epoch seconds as the draft convention. The database has no default for either `date` and no constraint enforcing timestamp units; missing values must be rejected. `amount` and `status` are non-NULL (`REAL` and `INTEGER` respectively), but no positive-only amount rule or status code range exists in the schema. If incoming values are not yet understood, do not fabricate a business state.
 
 
+### 3.5 Database-backed reference fields in the UI (v0.5)
+
+**Required behavior:** In create/edit/filter forms and applicable tables, any field corresponding to a database foreign key must obtain selectable items from its *actual referenced table*. The submitted/persisted value remains the referenced primary-key ID; the visible UI label must be a human-readable field instead of an unexplained numeric ID. Where the source table has `name`, show it. For users prefer `displayname` when present, otherwise `username`; where display name is not populated and username is null, use a clearly identified safe fallback such as `User #<id>` only as a last resort. Do **not** change the stored schema or imply that labels are unique IDs.
+
+| Relational field(s) / context | Lookup table | Primary visible label |
+|---|---|---|
+| `id_bank` on current/savings/credit accounts | `pvl_banks` | `name` |
+| `pvl_banks.id_countries` | `pvl_countries` | `name` (optionally append `iso` to disambiguate) |
+| `id_currency` on accounts/expenses/planned expenses, `pvl_settings.default_currency` | `pvl_currencies` | `name` (optionally append `iso`) |
+| `id_user` on account forms | `pvl_users` | `displayname` → `username` |
+| `pvl_users.id_role` | `pvl_user_roles` | `name` |
+| `id_current_account` on credit account, and current-account `id_account` on expenses, planned/recurring expenses, debts, taxes, actual/planned income | `pvl_accounts_current` | `name` (optionally append user/currency if authorized) |
+| `pvl_account_history_current.id_account` | `pvl_accounts_current` | `name` |
+| `pvl_account_history_savings.id_account` | `pvl_accounts_savings` | `name` |
+| `id_category` on expenses and recurring expenses | `pvl_expenses_categories` | `name` |
+
+**Proposed implementation:** A reusable lookup/select component queries authorized, filtered lookup endpoints; small lists may preload, while large lists should use paginated search/autocomplete. Populate before the user edits the field, keep the current selection visible, refresh when another selection affects valid choices, and localize validation/empty/loading states. The backend always verifies that the submitted ID exists, matches the required table and is allowed for the current user. Do not rely on the HTML label as the key or assume that all table columns named `id_*` have the same relationship. No new database tables are required.
+
+### 3.6 Import Wizard — CSV, QIF and OFX/QFX (v0.5)
+
+**Required:** Add a step-based Import Wizard reachable from the left navigation. It accepts local files in **CSV**, **QIF**, and **OFX/QFX** formats. OFX/QFX support is file parsing, not a bank connection or online synchronization. This wizard does **not** assume an unmodeled general transaction table exists.
+
+**Proposed workflow:** (1) select a file and detect/confirm format; (2) select the target current account and intended target data type (e.g., actual expenses or actual income), with the destination restricted to currently modeled fields; (3) map source columns/payees, dates, amount signs, currencies and categories to supported PVLedger fields; (4) preview parsed rows, required fields, validation errors, and potential duplicates; (5) explicitly confirm authorized writes; (6) show imported/skipped/failed counts and downloadable error details. CSV mapping should allow delimiter, encoding, header, decimal separator, and date-format choices. QIF parsing should support its applicable account/transaction conventions; OFX/QFX should parse supported SGML/XML variants and transaction identifiers when present. Unsupported formats/record types must be explained, not silently discarded.
+
+**Data integrity and security:** Never automatically post imported rows to a live account balance or create history snapshots; those accounting workflows remain undecided in §3.2–3.4. Where the source lacks a mandatory field (for example, `pvl_income.status`), request a deliberate mapping or rule approved for that table rather than inventing a code. Preserve date accuracy and currency context; do not silently convert foreign currencies. Validate file size, encoding, content type, malformed OFX/XML, duplicate detection and account/role permissions. Show duplicate candidates with a review choice (e.g. skip/import) rather than assuming uniqueness that the schema does not enforce. Use transactions or clearly disclosed batch-commit behavior; partial import results must be auditable in the result summary without adding a database audit table implicitly.
+
+### 3.7 Export Wizard (v0.5)
+
+**Required:** Add an Export Wizard reachable from the left navigation. Users can choose which authorized data to export, such as accounts, history snapshots, expenses, actual/planned income, debts, taxes, and supported reference information. Offer filters (account, dates, status where defined, currency), a preview/count, and download of the resulting file.
+
+**Proposed formats:** **CSV is the baseline output format**; QIF and standard OFX are additional targets only for datasets representable in those formats. QFX output is **not guaranteed** because of institution-specific conventions, even though QFX input is required. JSON may be added as a PVLedger-native interchange format. Define field sets and how account IDs are represented (stable IDs plus readable names) before finalizing each exporter. Do not claim that an export is a full database backup, a bidirectional lossless round trip, or an unsupported financial interchange standard.
+
+**Proposed workflow:** Choose scope → choose format → set columns/locale/date/currency options → preview record count and compatibility warnings → confirm → download. Exports must respect backend authorization, protect passwords/secrets, escape CSV spreadsheet-formula risks, use predictable filenames and UTF-8 where possible, stream larger files with resource limits, and clearly state which fields/formats cannot be represented. File generation must not change balances or other financial data.
+
+### 3.8 Reports and charts (v0.5)
+
+**Required:** Include a left-sidebar **Reports** section supporting **pie charts** and **balances versus time** charts, with filtering and clear labels. Reports are read-only; access is checked server-side for every chart and its data endpoint.
+
+| Report | Suggested visualization | Source/accuracy rule |
+|---|---|---|
+| Expense distribution by category | Pie chart with amounts and percentages, plus accessible table | `pvl_expenses` grouped by `pvl_expenses_categories`, respecting account/currency/date filtering |
+| Expense distribution by account | Pie chart with legend and table | Actual `pvl_expenses` grouped by linked current account; one currency at a time |
+| Income versus expenses over a period | Time series or grouped bars (proposed) | Actual `pvl_income` and `pvl_expenses` only; income status treatment awaits approved rules |
+| Current account balance history | Balance vs. time **line chart** with points | Actual snapshots from `pvl_account_history_current.date/amount` |
+| Savings account balance history | Balance vs. time **line chart** with points | Actual snapshots from `pvl_account_history_savings.date/amount` |
+
+**Required interpretation:** Time-series plots use recorded Unix-second timestamps, displayed in the chosen UI locale/timezone; they do **not** synthesize daily balances between snapshots. Credit accounts have no balance-history table. Histories may contain multiple records at one timestamp; graph behavior for equal timestamps should be documented rather than treated as a database uniqueness guarantee. Do not merge values in different currencies without an approved exchange-rate model, and do not represent planned income as received income or planned expenses as actual spending.
+
+**Proposed UI:** Chart type and filter controls, account/currency selector populated through §3.5, configurable date range, readable legends/units, a no-data state and a synchronized accessible tabular view. Chart calculations should be testable independently of the JavaScript chart renderer. Financial reports may also be downloadable through the Export Wizard; that is a proposed integration, not a new database requirement.
+
 ---
 
 ## 4. First-run wizard
@@ -267,9 +335,9 @@ On startup, PVLedger loads its selected configuration, validates paths and datab
 ### 5.1 Required commands
 
 ```text
-vpledger -c /path_to_config_file
-vpledger --help
-vpledger --version
+pvledger -c /path_to_config_file
+pvledger --help
+pvledger --version
 ```
 
 | Option | Required behavior |
@@ -278,7 +346,7 @@ vpledger --version
 | `--help` | Print syntax, options and short descriptions, then exit successfully without starting the web server. |
 | `--version` | Print application name and semantic version, and optionally build/commit details; do not require database access. |
 
-**Proposed additions (not yet required):** `--check-config`, `--migrate`, `--backup <path>`, `--verbose` and `--log-level`. Whether plain `vpledger` without `-c` looks for a default config remains an open decision.
+**Proposed additions (not yet required):** `--check-config`, `--migrate`, `--backup <path>`, `--verbose` and `--log-level`. Whether plain `pvledger` without `-c` looks for a default config remains an open decision.
 
 ### 5.2 Startup state machine
 
@@ -397,10 +465,25 @@ menu:
   expenses: Expenses
   income: Income
   planned_income: Planned income
+  reports: Reports
+  expense_breakdown: Expense breakdown
+  balance_trends: Balance history
+  data: Data
+  import: Import
+  export: Export
   settings: Settings
 wizard:
   title: Initial setup
   create_admin: Create administrator
+  import_preview: Review import
+  import_confirm: Import selected records
+  export_select: Select export data
+reports:
+  no_data: No data for the selected filters
+  balance_over_time: Balance over time
+lookups:
+  select_value: Select a value
+  no_matches: No matching records
 buttons:
   save: Save
   cancel: Cancel
@@ -426,7 +509,7 @@ errors:
 - Oat++ serves complete HTML pages based on templates, while JSON endpoints supply list/form data and selected dynamic content.
 - Template placeholders use a documented syntax such as `{{page.title}}`, `{{current_user.display_name}}`, `{{content}}` and `{{asset.theme_css}}` (syntax is illustrative, not a committed template engine).
 - **All substitutions are HTML-escaped by default.** Only controlled, explicitly trusted template fragments may contain HTML markup; avoid raw injection from user-provided text.
-- Common layout: header + navigation container + main content + footer. Templates must not store authentication/authorization policy.
+- **Required desktop layout:** header + persistent **left vertical navigation/sidebar** + main content to its right + footer. The vertical menu remains visible while navigating across ordinary pages; narrow screens use a left-origin accessible drawer. Templates must not store authentication/authorization policy.
 
 **Illustrative base template:**
 
@@ -441,8 +524,12 @@ errors:
 </head>
 <body>
   <header>{{app.name}}</header>
-  <nav id="pvledger-menu" aria-label="Main navigation"></nav>
-  <main id="main-content">{{content}}</main>
+  <div class="app-layout">
+    <aside id="sidebar" class="sidebar sidebar--left">
+      <nav id="pvledger-menu" aria-label="Main navigation"></nav>
+    </aside>
+    <main id="main-content">{{content}}</main>
+  </div>
   <script src="/assets/js/menu.js" defer></script>
 </body>
 </html>
@@ -450,10 +537,10 @@ errors:
 
 ### 8.2 JavaScript-generated menu
 
-- `menu.js` builds the navigation tree from a stable menu definition (or from a server endpoint such as `GET /api/v1/ui/menu`).
+- `menu.js` builds a **left-aligned vertical navigation tree** from a stable menu definition (or from a server endpoint such as `GET /api/v1/ui/menu`).
 - Use translation keys and current locale when creating visible labels.
 - The server filters available menu entries by role and enabled plugin registrations.
-- Menu can contain nested groups, active-route highlighting and responsive/mobile layout.
+- Child sections expand **vertically under their parent**; support active-route highlighting, keyboard focus/ARIA, and a compact left-edge mobile drawer (not a desktop top navigation bar). Reports and Data (Import/Export) are first-class menu groups.
 - Client-side menu hiding must **never** substitute for backend route permission checks.
 - Plugin menu items are validated and namespaced to avoid collisions.
 
@@ -589,6 +676,10 @@ The browser UI should use a versioned, same-origin API prefix `/api/v1`. This is
 | Taxes | `/api/v1/taxes` | CRUD |
 | Users | `/api/v1/users` | Admin CRUD; avoid exposing password digests |
 | Roles | `/api/v1/roles` | Read roles; modification policy TBD |
+| Reference lookup values | `GET /api/v1/lookups/{resource}` (or existing authorized list endpoints) | Resolve `{id,label}` options from the correct referenced table, including user displayname/username fallback |
+| Import | `POST /api/v1/import/preview`, `POST /api/v1/import/commit` (proposed) | Parse CSV/QIF/OFX/QFX; map records, preview warnings, confirm validated writes |
+| Export | `POST /api/v1/export/preview`, `POST /api/v1/export/download` (proposed) | Authorized dataset/field/filter selection and file download; CSV first |
+| Reports | `GET /api/v1/reports/expense-categories`, `GET /api/v1/reports/balances` (proposed) | Filtered pie/time-series datasets; scoped by account, currency and dates |
 | Settings | `GET/PATCH /api/v1/settings` | Admin preference changes |
 | Plugins | `/api/v1/plugins`, `POST /api/v1/plugins/{id}/enable` | Admin management and plugin state |
 | UI support | `GET /api/v1/ui/menu`, `GET /api/v1/i18n/{locale}` | Navigation / client translation data |
@@ -598,7 +689,8 @@ The browser UI should use a versioned, same-origin API prefix `/api/v1`. This is
 **Proposed API conventions:**
 
 - Validate all IDs and foreign-key references; `404` for not found, `409` for integrity conflicts, `400`/`422` for invalid input, `401`/`403` for auth failures. For history, enforce existing parent account and non-null timestamp/balance, and get snapshot currency from its parent account; never expose history from another account without authorization. For income, require an existing current account and non-NULL `name`, `amount`, integer `status`, and integer Unix `date`; derive display currency only from the linked current account. Until status mappings are approved, do not expose implicit processing/settlement actions or use planned-expense state codes.
-- List routes support `page`, `page_size`, `sort` and allowlisted filter parameters; proposed income filters include `id_account`, start/end `date`, and raw `status` code (without inventing labels).
+- List routes support `page`, `page_size`, `sort` and allowlisted filter parameters; proposed income filters include `id_account`, start/end `date`, and raw `status` code (without inventing labels). Reference lookups must filter to authorized rows and return display labels alongside stable IDs; write routes must validate the submitted IDs against actual FKs.
+- Import/export endpoints are **proposals**, not part of the database contract. Use size/row/time limits, authenticated sessions, CSRF protection for mutations, validation-only preview, explicit commit, and unguessable short-lived upload/job references where applicable. Report/export results must recheck access at request time and never expose user passwords or configuration secrets.
 - Never expose password digest or database credentials in API responses.
 - Return consistent error JSON, e.g. `{"error":{"code":"VALIDATION_ERROR","message":"..."}}`, with localized display text as a separate concern.
 - The API must apply all authorization and user-data visibility rules independently of UI navigation.
@@ -655,6 +747,8 @@ flowchart TD
     HTTP --> Templates[HTML template renderer]
     Services --> Locale[YAML locale service]
     Services --> Plugins[Plugin manager]
+    Services --> ImportExport[Import / export mapping services]
+    Services --> Reports[Reporting aggregation services]
     Bootstrap[CLI / config.yaml / first-run / migrations] --> HTTP
     Bootstrap --> Repos
 ```
@@ -682,22 +776,28 @@ pvledger/
 │   ├── bootstrap/
 │   ├── controllers/
 │   ├── dto/
-│   ├── services/                   # Proposed account-history and income services
-│   ├── repositories/               # Proposed account-history and income repositories
+│   ├── services/                   # History, income, import/export and report services
+│   ├── repositories/               # History/income and report query repositories
 │   │   ├── interfaces/
 │   │   └── sqlite/
 │   ├── migrations/
 │   ├── auth/
 │   ├── i18n/
 │   ├── plugins/
+│   ├── import_export/             # Proposed CSV, QIF, OFX/QFX parsers/exporters
+│   ├── reports/                   # Proposed report aggregation/data shaping
 │   └── ui/                        # UI integration / HTML rendering C++ code
 ├── templates/                     # HTML templates for web pages
 │   ├── layout.html
 │   ├── login.html
 │   ├── setup/
-│   └── pages/                     # Proposed income and planned-income views
+│   ├── pages/                     # Financial pages and reports
+│   └── wizards/                   # Proposed import/export wizard templates
 ├── js/                            # JavaScript files
 │   ├── menu.js
+│   ├── import-wizard.js            # Proposed wizard interactions
+│   ├── export-wizard.js            # Proposed wizard interactions
+│   ├── reports.js                 # Proposed chart rendering
 │   └── app.js
 ├── docs/                          # Documentation
 │   ├── spec/                      # Application, database and related specifications
@@ -727,7 +827,8 @@ pvledger/
 ├── tests/                         # Proposed test suites
 │   ├── unit/
 │   ├── integration/
-│   └── fixtures/
+│   ├── fixtures/                  # Add safe CSV/QIF/OFX/QFX samples
+│   └── reports/
 └── cmake/                         # Proposed CMake helper modules
 ```
 
@@ -749,9 +850,9 @@ The root `Dockerfile` and `docker-compose.yaml` are **part of the project struct
 
 ### 13.4 CMake expectations
 
-- Define an executable target `vpledger`, C++ standard, warnings, and install rules.
-- Treat `src/` as the C++ source root and `src/headers/` as the canonical project-header location (for example with `target_include_directories(vpledger PRIVATE src/headers)`).
-- Link compatible, pinned dependencies for Oat++, SQLite integration, YAML parsing, template rendering and optionally testing/Swagger.
+- Define an executable target **`pvledger`** (`add_executable(pvledger ...)`), C++ standard, warnings, and install rules; the final output filename and installed command must be `pvledger`.
+- Treat `src/` as the C++ source root and `src/headers/` as the canonical project-header location (for example with `target_include_directories(pvledger PRIVATE src/headers)`).
+- **Required static core release build:** link compatible, pinned **static** builds of Oat++, SQLite integration, YAML parsing, template rendering and other core dependencies. Use an explicit release static-link option/toolchain configuration and fail CI when required static libraries are unavailable; merely setting `BUILD_SHARED_LIBS=OFF` is insufficient to guarantee a static final binary.
 - Use build options to turn optional database backends, plugin support and API documentation on/off without changing core application logic.
 - Copy/install `templates/`, `js/`, `lang/`, `themes/` and example config into documented runtime locations; preserve the ability to override applicable paths through `config.yaml`.
 - Configure CTest (or equivalent) with unit/integration test targets.
@@ -761,21 +862,29 @@ The root `Dockerfile` and `docker-compose.yaml` are **part of the project struct
 **Proposed native build commands:**
 
 ```bash
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPVLEDGER_STATIC=ON
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
-./build/vpledger --version
-./build/vpledger -c ./config/config.yaml
+./build/pvledger --version
+./build/pvledger -c ./config/config.yaml
 ```
 
 The commands describe the target developer workflow; the repository and `CMakeLists.txt` have not yet been generated.
 
-### 13.5 Optional Docker build and deployment
+### 13.5 Static linking and plugin compatibility
 
-- **`Dockerfile`** must define how to build and package the C++ application, its runtime dependencies and required assets. A multi-stage CMake build is recommended to keep the runtime image smaller.
+**Required release artifact:** `pvledger` is a statically linked core C++ executable on each declared supported platform. Core Oat++/HTTP, SQLite, YAML and necessary runtime libraries must be included in the executable rather than depending on shared `.so`/`.dylib`/`.dll` versions at launch. In a Linux release build, the selected toolchain should make the core binary self-contained; a musl-based toolchain is a **proposed** strategy if full static linking is required. Do not assume fully static glibc networking/name-service features are automatically portable or safe in every environment.
+
+**Release verification (required):** CI must inspect the built binary with platform-appropriate tools (for example `file`, `readelf -d` and/or `ldd` on Linux) and run it in a minimal clean environment with `--help`, `--version`, SQLite initialization and a basic HTTP smoke test. Package templates, translations, themes and any plugins as **separate data/extension assets**; static linking does not embed those assets automatically.
+
+**Plugin trade-off requiring a design decision:** Existing plugin requirements include optional loadable extensions. A fully static core does not mean that loadable native plugins are also statically embedded. If in-process `.so` plugins are retained, loading them dynamically is an explicit extension-time exception to a no-dynamic-code deployment policy and may have C runtime/ABI compatibility constraints; plugin failures must not prevent the core from starting. If **no dynamic loading at all** is required, choose an alternative (built-in plugins, out-of-process plugin executables with an IPC interface, or another approved sandboxed interface). Do not promise a pure-static executable and unrestricted in-process dynamic C++ plugins as an automatically compatible combination. This decision does **not** authorize changes to `pvl_plugins` in the database.
+
+### 13.6 Optional Docker build and deployment
+
+- **`Dockerfile`** must define how to build and package the **statically linked** `pvledger` core executable and its required runtime assets. A multi-stage CMake build is recommended to keep the runtime image smaller.
 - **`docker-compose.yaml`** must define a PVLedger service that can build from the root `Dockerfile` and optionally mount a `config.yaml`, the SQLite database location and other configurable asset directories as needed.
 - Persistent SQLite data and local configuration must survive container replacement. Avoid baking real user data or secrets into images.
-- The application still uses `vpledger -c <path>` inside the container; port mappings must be consistent with the configured application port and chosen bind address.
+- The application still uses `pvledger -c <path>` inside the container; port mappings must be consistent with the configured application port and chosen bind address.
 - Document volume ownership/permissions, backup behavior, network exposure, and where to supply local configuration. The deployment should default to private/local access rather than automatically publishing financial data to the public Internet.
 - Docker Compose is an optional operational convenience, not a replacement for CMake or a dependency of normal application execution.
 
@@ -800,16 +909,25 @@ The exact service configuration, image base, volume mappings, listening address,
 | Data integrity | Enforce all 26 foreign keys (25 required); require non-null history account/date/amount and non-null income account/name/amount/status/date; preserve historical records, income records and users on upgrade; use transactions for multi-record operations |
 | Backup/restore | Document SQLite file-backup procedure and backup-before-migration policy; test restore |
 | Internationalization | UTF-8 for database/UI/YAML; locale fallback; translation-key validation |
-| Portability | Separate OS/platform paths and database integrations from business services |
+| Portability | Separate OS/platform paths and database integrations from business services; validate statically linked release output on each supported OS/toolchain |
 | Reliability | Structured startup errors; reject bad configs/migrations; graceful shutdown and database close |
 | Observability | Redacted structured logs, bounded log size and basic health checks |
-| Accessibility | Semantic HTML, keyboard navigation, form labels, error messages and sufficient contrast |
-| Performance | Pagination for large lists; indexed/parameterized queries; agree measurable targets during implementation |
+| Accessibility | Semantic HTML; keyboard-accessible left vertical menu and drawers; correctly labeled lookup fields, charts with table alternatives, error messages and sufficient contrast |
+| Performance | Pagination for large lists and lookup selectors; bounded import/export streaming; report query limits; indexed/parameterized queries; agree measurable targets during implementation |
 | Compatibility | Versioned API, plugin ABI and migration compatibility checks |
 | Testing | Unit, integration, end-to-end first-run, locale, plugin and authorization tests |
 
+**v0.5 operational requirements:** The core executable must pass static-link verification; import processing must be reviewable and resilient to malformed or malicious source files; exports must be limited to an authenticated user's authorized data; reports must use only real persisted values and must not aggregate unrelated currencies.
+
 ### 14.1 Minimum test cases
 
+- CMake target and installed filename are exactly `pvledger`; release builds pass platform static-link inspection and a minimal-runtime smoke test.
+- Desktop menu is vertical at the left, includes Reports and Data (Import/Export), keeps submenu groups beneath their parents and is accessible on keyboard/mobile devices.
+- Every FK form field uses its actual referenced table for selectable options and shows a readable label; user selectors prefer `displayname`, then `username`; IDs, never display labels, are submitted and validated server-side.
+- CSV, QIF and OFX/QFX test fixtures (including encodings, malformed input, duplicated transactions, sign conventions and unusual dates) preview correctly; unrecognized records/errors cannot be silently committed.
+- Import requires user-approved account/field mapping and confirmation, honors account permissions, and does not change live balances/history or invent required income status values.
+- Export wizard filters to allowed account data, produces correctly escaped downloadable CSV, does not include password digests/secrets, and clearly rejects unsupported QIF/OFX round trips.
+- Reports render pie breakdowns and current/savings balance-versus-time charts from verified records; empty/duplicate-timestamp datasets have defined display behavior, mixed currencies are separated, and chart data equals its accessible table values.
 - CLI help/version exit without loading the DB; invalid `-c` path shows actionable error.
 - SQLite first-run wizard creates schema, exactly one settings row, correct reference counts and first administrator.
 - Restart preserves data, selected language, theme, currency and instance name without rerunning seeds.
@@ -837,13 +955,14 @@ The exact service configuration, image base, volume mappings, listening address,
 
 | Phase | Deliverables | Completion check |
 |---|---|---|
-| **M0 — Skeleton** | CMake project following `src/`, `src/headers/`, `templates/`, `js/` and `docs/spec/`; root `README.md`, optional-deployment `Dockerfile` and `docker-compose.yaml`; `vpledger` executable, CLI, Oat++ server and tests | Native build works; Docker packaging can be validated separately |
+| **M0 — Skeleton** | CMake project following `src/`, `src/headers/`, `templates/`, `js/` and `docs/spec/`; root `README.md`, optional-deployment `Dockerfile` and `docker-compose.yaml`; `pvledger` statically linked release executable, CLI, Oat++ server and tests | Native binary passes static-link check and clean-environment smoke test; Docker packaging can be validated separately |
 | **M1 — Storage & bootstrap** | YAML config, SQLite repo, 20-table v0.7.1 schema/one-time seed initialization, staged upgrades from v0.5/v0.6/v0.6.1/v0.7 and singleton settings | Fresh setup and restart pass schema/integrity tests; no repeated fixed-ID seeds |
 | **M2 — Localization & wizard** | YAML locale loader, setup UI, first admin, persisted locale/instance/theme/currency | End-to-end first-run works in at least one completed locale |
-| **M3 — Security & base UI** | Login/logout, sessions, roles, templating, JS menu, themes | Role enforcement validated on pages and API |
+| **M3 — Security & base UI** | Login/logout, sessions, roles, templating, **left vertical JS menu**, themes, shared database reference selectors | Role enforcement and lookup label/ID behavior validated on pages and API |
 | **M4 — Financial modules** | CRUD/forms for banks, accounts, expenses, categories, planned/recurring, debts and taxes; actual/planned income listing and status-aware forms after code rules are agreed; dated balance history display for current/savings and an approved snapshot-entry workflow | Data validation, income required fields and dates, historical balance semantics and FK behaviors tested |
-| **M5 — Plugins & stabilization** | Plugin registry/loader, safe defaults, documentation, backup/restore guidance, regression tests | Plugin enable/disable and upgrade tests pass |
-| **M6 — Future databases** | PostgreSQL support, then MariaDB/MySQL adapters and migrations | Each backend passes common integration suite |
+| **M5 — Import/export and reports** | CSV/QIF/OFX/QFX import preview/commit, CSV-first export wizard, Reports menu with category pie charts and account balance timelines | Format fixtures, permissions, time-series accuracy and safe export tests pass |
+| **M6 — Plugins & stabilization** | Plugin registry/loader compatible with static core strategy, safe defaults, documentation, backup/restore guidance, regression tests | Plugin enable/disable, static binary and upgrade tests pass |
+| **M7 — Future databases** | PostgreSQL support, then MariaDB/MySQL adapters and migrations | Each backend passes common integration suite |
 
 Each milestone may be split into issues. No schedule, team size, or release date is assumed.
 
@@ -869,7 +988,7 @@ These are **not** settled by the attached database contract or the original appl
 14. **Plugin compatibility:** Stable API/ABI, signing/distribution policy, plugin permission model and restart requirements.
 15. **Settings details:** Should blank `instance_name` be `NULL` or `''`? Define valid `db_version` format.
 16. **Brand copy:** Supplied slogan is **“Manager your personal assets with privacy”**. Confirm whether intended wording is **“Manage your personal assets with privacy”** before changing UI copy.
-17. **Data portability:** Import/export, backups through UI and cross-engine data migration need a separate specification.
+17. **Data portability details:** Import/export wizards are now required. Define exact mapping templates, supported QIF/OFX variants, initial importable datasets, fidelity expectations, and whether UI backups or cross-engine migration are also needed.
 18. **Scope of “assets”:** Whether to add non-bank assets (property, investments, vehicles, cash) after v1; not modeled today.
 19. **Snapshot creation:** Should balances be captured manually, at day-end, periodically or on balance changes? Define time zone/day boundary and timestamp choice.
 20. **Snapshot corrections and duplicates:** Should multiple snapshots for one `(id_account, date)` be accepted, merged or rejected by application logic? Current SQL imposes no uniqueness constraint.
@@ -882,6 +1001,11 @@ These are **not** settled by the attached database contract or the original appl
 27. **Planned income lifecycle:** Whether planned income may be converted/reconciled to actual income, whether duplicates are allowed, and how a link would be represented (the schema has no planned→actual FK).
 28. **Income currency and ownership:** Confirm using the linked current account's currency, and how record access is constrained through `id_account` and account `id_user`.
 29. **Populated v0.7 upgrade:** Determine how historical dates will be recovered and how the two income tables can be safely rebuilt while preserving all records. Auto-migration must block until resolved.
+30. **Static build targets:** Confirm required OS/architecture combinations, toolchain (including libc on Linux), licensing and feasibility of static builds for each dependency.
+31. **Plugin loading versus static core:** Choose dynamic extension exception, built-in modules, or out-of-process plugin contract; define ABI/runtime compatibility and isolation.
+32. **Import semantics:** Decide which existing table(s) each supported source format may populate and how to handle OFX/QFX variants, duplicate identifiers, signed amounts, multi-currency data and income status fields.
+33. **Export formats:** Confirm whether QIF and OFX output are required beyond baseline CSV, and whether QFX output is desired/feasible; define supported data/field mapping and round-trip limitations.
+34. **Reports:** Choose chart library, approved available report metrics, timestamp/duplicate plotting policy, default currency filters and how statuses affect actual-income charts.
 
 ---
 
@@ -889,14 +1013,18 @@ These are **not** settled by the attached database contract or the original appl
 
 A first usable release is ready for review when all of the following are demonstrated:
 
-- [ ] `vpledger --help` and `vpledger --version` work without an initialized DB.
-- [ ] `vpledger -c <config-path>` starts a local Oat++ web server or launches secure first-run setup.
+- [ ] The CMake output/installed executable is named **`pvledger`** (no remaining `vpledger` command) and `pvledger --help` / `pvledger --version` work without an initialized DB.
+- [ ] `pvledger -c <config-path>` starts a local Oat++ web server or launches secure first-run setup.
 - [ ] Valid YAML config controls SQLite path, port, language path, plugins path and themes path.
 - [ ] The wizard selects a locale, configures settings, creates the first admin and finishes without exposing setup routes afterward.
 - [ ] Database matches the attached v0.7.1 contract: **20 tables, 119 columns, 26 foreign keys (25 required, 1 optional), one explicit secondary index** and **430 reference rows imported once**.
 - [ ] Exactly one `pvl_settings` record exists after setup; `db_version` is used for migrations.
 - [ ] Users can log in/out and role checks are enforced on both UI and API routes.
-- [ ] Browser pages and JavaScript-generated menu display from YAML translations and HTML templates.
+- [ ] Browser pages and JavaScript-generated **vertical left-hand menu** display from YAML translations and HTML templates, with accessible nested groups and responsive left drawer.
+- [ ] Forms with database relationships automatically list valid referenced records, displaying name/displayname/username as appropriate; values submitted/stored are FK IDs and the server independently enforces permissions.
+- [ ] Import Wizard accepts CSV, QIF and OFX/QFX, performs mapping/preview/duplicate review/validation before explicit commit and reports row-level outcomes without unapproved balance changes.
+- [ ] Export Wizard can select authorized records and filters and produce at least a correctly escaped CSV download; additional format availability is accurately labeled.
+- [ ] Reports includes pie charts and current/savings balance-versus-time charts driven by real persisted values, with currency-aware filters and tabular accessibility alternatives.
 - [ ] Existing financial modules remain available with edits where authorized; amounts and the **planned-expense** status meanings match the DB spec. Income status values are not assigned invented meanings.
 - [ ] Actual and planned income can be listed by account/date, with records linked to existing current accounts; forms/APIs enforce required `id_account`, `name`, `amount`, `status` and `date`. Any income write or processing workflow follows separately approved status/business rules, with no unapproved account posting.
 - [ ] Current/savings account details can display historical absolute balances from their respective new history tables, with correct currency and timestamps; required history `id_account`, `date` and `amount` are validated.
@@ -906,12 +1034,14 @@ A first usable release is ready for review when all of the following are demonst
 - [ ] No unsafe cross-currency aggregation or unapproved automatic balance mutation is performed.
 - [ ] Restore/upgrade tests preserve an existing database; errors are logged without secrets.
 - [ ] Required repository paths exist: `src/`, `src/headers/`, `templates/`, `js/`, `docs/`, `docs/spec/`, root `README.md`, `Dockerfile` and `docker-compose.yaml`.
-- [ ] CMake builds the application without Docker; optional Docker build/Compose deployment persists SQLite data and does not require committing secrets.
+- [ ] CMake builds a **statically linked core `pvledger` release executable** without Docker, verified on each supported target; optional Docker build/Compose deployment persists SQLite data and does not require committing secrets. Any plugin dynamic-loading exception is documented.
 - [ ] Source, build steps, configuration reference and extension guidelines are documented.
 
 ---
 
 ## 18. References
+
+**No database schema modifications are introduced by this application-spec revision.** The import, export, chart and lookup requirements are application features layered on top of the existing 20-table schema.
 
 **Project reference (authoritative for schema):** `pvledger_database_spec(3).md`, **PVLedger Database Specification (Draft v0.7.1)**, supplied with this revision. It identifies `pvledger(7).sql` as the v0.7 baseline and describes the derived `pvledger_schema_v0.7.1.sql`, which adds **required `date INTEGER NOT NULL`** columns to `pvl_income` and `pvl_income_planned`. The actual SQL source, derived SQL and migration scripts are **not attached to this specific message**; obtain and verify the approved files under version control before implementing initializer/migrations. This application specification does not replace the authoritative column-by-column database specification.
 
@@ -932,4 +1062,5 @@ A first usable release is ready for review when all of the following are demonst
 | v0.2 | 2026-11-22 | Confirmed root folder structure (`src/headers/`, `templates/`, `js/`, `docs/spec/`), root `README.md`, and optional Dockerfile/Compose build and deployment; aligned CMake, milestones and acceptance criteria. |
 | v0.3 | 2026-11-22 | Aligned with database spec v0.6.1: 18-table inventory; added current/savings balance histories and NOT NULL account/date/amount rules; clarified snapshot semantics/UI/API; added one-time seed safety, v0.5/v0.6 migration paths, tests, and unresolved snapshot policies. |
 | v0.4 | 2026-11-23 | Aligned with database spec v0.7.1: 20 tables, 119 columns, 26 FKs; two actual/planned income tables with mandatory dates, amounts, account links, names and statuses; proposed UI/API/services, safe staged migrations, validation and tests; unresolved income statuses and posting retained. |
+| v0.5 | 2026-11-23 | Corrected binary name to `pvledger`; required statically linked core build, vertical left sidebar, database-driven FK selectors, CSV/QIF/OFX/QFX import wizard, export wizard and chart reports; updated architecture, UI, API, milestones, tests, security and acceptance criteria without schema changes. |
 
