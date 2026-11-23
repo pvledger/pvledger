@@ -9,9 +9,10 @@
   <script src="/assets/js/menu.js" defer></script>
   <script src="/assets/js/app.js" defer></script>
 </head>
-<body>
+<body class="{{layout_class}}">
   <header class="masthead">
     <a class="brand" href="/">{{brand}}</a>
+    <button id="menu-toggle" type="button" aria-expanded="false" aria-controls="menu" hidden>{{navigation}}</button>
     <nav id="menu" aria-label="{{navigation}}"></nav>
   </header>
   <main id="main">{{content}}</main>

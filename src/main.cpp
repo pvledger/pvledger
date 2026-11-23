@@ -56,6 +56,8 @@ class Controller final : public HttpRequestHandler {
             "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; "
             "form-action 'self'; frame-ancestors 'none'; base-uri 'none'");
         outgoing->putHeader("Connection", "close");
+        if (!response.filename.empty())
+            outgoing->putHeader("Content-Disposition", oatpp::String("attachment; filename=\"" + response.filename + "\""));
         if (!response.cookie.empty()) outgoing->putHeader("Set-Cookie", oatpp::String(response.cookie));
         if (!response.location.empty()) outgoing->putHeader("Location", oatpp::String(response.location));
         return outgoing;
@@ -82,7 +84,7 @@ public:
         request.cookie = standard(incoming->getHeader("Cookie"));
         request.csrf = standard(incoming->getHeader("X-CSRF-Token"));
         request.contentType = standard(incoming->getHeader("Content-Type"));
-        for (const std::string key : {"page", "page_size", "sort", "id_account", "status", "from", "to", "lang"}) {
+        for (const std::string key : {"page", "page_size", "sort", "id_account", "status", "from", "to", "lang", "id_currency", "account_type"}) {
             const auto value = incoming->getQueryParameter(oatpp::String(key));
             if (value) request.query.emplace(key, *value);
         }
@@ -93,7 +95,8 @@ public:
         if (!length.empty()) {
             try {
                 const auto bytes = pvl::integer(length);
-                if (bytes > 65536) return send({413, "text/plain", "Request body exceeds 64 KiB"});
+                const int limit = request.path == "/api/v1/import/preview" ? 1024 * 1024 : 65536;
+                if (bytes > limit) return send({413, "text/plain", "Request body exceeds the limit"});
                 if (bytes < 0) return send({400, "text/plain", "Invalid Content-Length"});
                 if (bytes && request.method != "GET") request.body = standard(incoming->readBodyToString());
             } catch (const std::exception&) {
@@ -146,8 +149,8 @@ void run(pvl::Config config) {
 
 int main(int argc, char* argv[]) {
     if (argc == 2 && std::string(argv[1]) == "--help") {
-        std::cout << "Usage: vpledger -c <config.yaml>\n"
-                     "       vpledger --help | --version\n"
+        std::cout << "Usage: pvledger -c <config.yaml>\n"
+                     "       pvledger --help | --version\n"
                      "  -c <file>  Load configuration or start local setup.\n";
         return 0;
     }

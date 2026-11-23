@@ -1,4 +1,4 @@
-#include "pvledger.hpp"
+#include "portability.hpp"
 #include <yaml-cpp/yaml.h>
 #include <algorithm>
 #include <cmath>
@@ -7,16 +7,7 @@
 #include <sstream>
 
 namespace pvl {
-namespace {
-struct Resource {
-    const char* route;
-    const char* table;
-    const char* label;
-    enum Access { Read, Write, Admin } access;
-    const char* owner = "";
-};
-
-const Resource resources[] = {
+const std::vector<Resource> resources = {
     {"accounts/current", "pvl_accounts_current", "current_accounts", Resource::Write, "id_user"},
     {"accounts/savings", "pvl_accounts_savings", "savings_accounts", Resource::Write, "id_user"},
     {"accounts/credit", "pvl_accounts_credit", "credit_accounts", Resource::Write, "id_user"},
@@ -34,6 +25,7 @@ const Resource resources[] = {
     {"users", "pvl_users", "users", Resource::Admin},
     {"roles", "pvl_user_roles", "roles", Resource::Read}
 };
+namespace {
 constexpr const char* apiPrefix = "/api/v1";
 constexpr const char* htmlType = "text/html; charset=utf-8";
 
@@ -180,10 +172,11 @@ std::string where(const std::vector<std::string>& filters) {
 
 Value fields(Repository& store, const Resource& resource) {
     auto list = store.query(std::string("PRAGMA table_info(") + resource.table + ")");
+    const auto relations = store.query(std::string("PRAGMA foreign_key_list(") + resource.table + ")");
     for (auto& field : list) {
         const auto name = field["name"].asString();
         if (name == "id" || name == "is_admin") continue;
-        for (const auto& relation : store.query(std::string("PRAGMA foreign_key_list(") + resource.table + ")"))
+        for (const auto& relation : relations)
             if (relation["from"].asString() == name)
                 for (const auto& target : resources)
                     if (relation["table"].asString() == target.table) field["resource"] = target.route;
@@ -449,7 +442,6 @@ Response Application::dispatch(const Request& request) {
     const bool get = request.method == "GET";
     const bool post = request.method == "POST";
     const bool api = starts(path, std::string(apiPrefix) + "/");
-    if (request.body.size() > 65536) throw Error(413, "too_large");
     const auto preferences = store->query("SELECT * FROM pvl_settings LIMIT 1");
     const bool ready = !preferences.empty();
     const Value settings = ready ? preferences[0] : Value{};
@@ -470,13 +462,14 @@ Response Application::dispatch(const Request& request) {
         values["title"] = title;
         values["brand"] = instance.empty() ? "PVLedger" : instance;
         values["csrf"] = csrf;
+        values["layout_class"] = csrf.empty() ? "public-page" : "signed-in";
         return Response(200, htmlType, render(layout, values, {{"content", content}}));
     };
     const auto cookie = [&](const std::string& value) {
         return "pvl_session=" + value + "; Path=/; HttpOnly; SameSite=Strict" +
                (config.secureCookie ? "; Secure" : "") + (value.empty() ? "; Max-Age=0" : "");
     };
-    if (get && (path == "/assets/js/menu.js" || path == "/assets/js/app.js"))
+    if (get && (path == "/assets/js/menu.js" || path == "/assets/js/app.js" || path == "/assets/js/workflows.js" || path == "/assets/js/import-file.js"))
         return {200, "text/javascript; charset=utf-8", readFile(config.assets / path.substr(8))};
     if (get && path == "/assets/theme.css") {
         auto selected = settings["theme"].asString();
@@ -596,7 +589,7 @@ Response Application::dispatch(const Request& request) {
         sessions.erase(cookieToken(request.cookie));
         const auto key = token();
         const auto csrf = token();
-        sessions[key] = {user, csrf, now + std::chrono::minutes(30)};
+        sessions[key] = {user, csrf, now + std::chrono::minutes(30), {}, {}};
         Value result;
         result["csrf"] = csrf;
         auto response = api ? data(result) : redirect("/");
@@ -678,6 +671,10 @@ Response Application::dispatch(const Request& request) {
             else if (route == "users" || route == "roles") group = tr("administration");
             add("/" + route, tr(resource.label), group);
         }
+        add("/reports/expense-categories", tr("expense_breakdown"), tr("reports"));
+        add("/reports/balances", tr("balance_timeline"), tr("reports"));
+        if (role != 3) add("/data/import", tr("import_file"), tr("data_tools"));
+        add("/data/export", tr("export_file"), tr("data_tools"));
         if (role == 1) {
             add("/settings", tr("settings"), tr("administration"));
             add("/plugins", tr("plugins"), tr("administration"));
@@ -685,6 +682,38 @@ Response Application::dispatch(const Request& request) {
         for (const auto& plugin : installed(true))
             add("/plugins/" + plugin["path"].asString(), plugin["label"].asString(), tr("plugins"));
         add("/about", tr("about"));
+        return data(result);
+    }
+    if (get && starts(path, "/api/v1/lookups/")) {
+        const auto pageNumber = queryInt(request, "page", 1);
+        if (pageNumber < 1 || pageNumber > 1000000) throw Error(422, "invalid_input");
+        return data(lookup(*store, path.substr(16), role, user, static_cast<int>(pageNumber)));
+    }
+    if (get && (path == "/data/import" || path == "/data/export")) {
+        const bool importing = path == "/data/import";
+        if (importing && role == 3) throw Error(403, "forbidden");
+        return shell(tr(importing ? "import_file" : "export_file"), path.substr(1));
+    }
+    if (get && (path == "/reports/expense-categories" || path == "/reports/balances"))
+        return shell(tr(path == "/reports/balances" ? "balance_timeline" : "expense_breakdown"), path.substr(1));
+    if (get && starts(path, "/api/v1/reports/"))
+        return data(report(*store, path.substr(16), request.query, role, user));
+    if (post && (path == "/api/v1/export/preview" || path == "/api/v1/export/download"))
+        return exportData(*store, inputFor(request), path == "/api/v1/export/download", role, user);
+    if (post && (path == "/api/v1/import/preview" || path == "/api/v1/import/commit")) {
+        if (role == 3) throw Error(403, "forbidden");
+        const auto input = inputFor(request);
+        auto& job = session->second;
+        if (path == "/api/v1/import/preview") {
+            job.preview = previewExpenses(*store, input, role, user);
+            job.preview["token"] = token();
+            job.previewExpires = now + std::chrono::minutes(10);
+            return data(job.preview);
+        }
+        if (!input["confirm"].isBool() || !input["confirm"].asBool() || job.preview.isNull() ||
+            job.previewExpires <= now || input["token"] != job.preview["token"]) throw Error(409, "preview_needed");
+        auto result = commitExpenses(*store, job.preview, input["rows"], role, user);
+        job.preview = {};
         return data(result);
     }
     if (get && path == "/about")

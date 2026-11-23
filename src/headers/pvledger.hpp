@@ -69,14 +69,14 @@ struct Request {
 };
 struct Response {
     int status;
-    std::string type, body, cookie, location;
+    std::string type, body, cookie, location, filename;
     Response(int status, std::string type, std::string body)
         : status(status), type(std::move(type)), body(std::move(body)) {}
 };
 
 class Application {
     using Clock = std::chrono::steady_clock;
-    struct Session { long long user; std::string csrf; Clock::time_point expires; };
+    struct Session { long long user; std::string csrf; Clock::time_point expires; Value preview; Clock::time_point previewExpires; };
     Config config;
     std::unique_ptr<Repository> store;
     std::mutex mutex;

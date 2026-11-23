@@ -8,4 +8,12 @@ Standard collection writes use POST, detail updates use PATCH, and detail deleti
 
 Requests can return an error object of the form `{"error":{"code":"constraint","message":"…"}}`. Use the code for client-side decisions since messages follow the instance locale. A successful deletion returns status 204.
 
+## Data workflows
+
+- `GET /lookups/{resource}?page=1` returns up to 100 authorized `{id,label}` entries. Use the collection's foreign-key `resource` metadata to choose a lookup, including `accounts/current` and `accounts/savings`. Non-administrators can resolve their own user label.
+- `POST /import/preview` accepts the browser's parsed rows with `dataset: "expenses"`, `id_account`, `id_currency` and `id_category`. Each row contains a name, positive amount and UTC timestamp. Optional fields include description, source currency ISO code, source identifier and a file parser error. The response includes the mapped rows and a ten-minute token. A new preview replaces the previous one in that session.
+- `POST /import/commit` accepts `{"token":"…","confirm":true,"rows":[0,2]}`. Indices select rows in preview order, including any duplicates the operator explicitly chose. Validation errors make a row ineligible. A successful atomic commit consumes the token. Account access, reference validity and new duplicate conflicts are checked at commit time.
+- `POST /export/preview` and `POST /export/download` accept the same selection, for example `{"dataset":"history/savings","format":"csv","filters":{"id_account":2},"columns":["date","amount","id_account_label","id_currency_label"]}`. Preview returns available columns, the full count, the row limit and up to ten sample rows. Download rechecks visibility and returns a named CSV attachment. The server requires the session CSRF header for both requests.
+- `GET /reports/expense-categories` returns category sums per currency. `GET /reports/balances?account_type=savings` returns individual stored snapshot points. Both accept account and currency IDs and inclusive UTC `from` and `to` filters and support up to 5,000 result rows.
+
 See the [OpenAPI document](openapi.yaml) for routes and response codes.

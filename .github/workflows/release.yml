@@ -1,0 +1,13 @@
+name: Linux release
+on: [push, pull_request]
+jobs:
+  native:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libssl-dev libjsoncpp-dev bubblewrap
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPVLEDGER_STATIC=ON -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/pvledger"
+      - run: cmake --build build --parallel 2
+      - run: ctest --test-dir build --output-on-failure
+      - run: cmake --install build
+      - run: sudo python3 tests/minimal_runtime.py "$RUNNER_TEMP/pvledger"

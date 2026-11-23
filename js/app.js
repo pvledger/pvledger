@@ -17,6 +17,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
     if (response.status === 401 && !login) location.assign("/login");
     if (response.status === 204) return null;
+    if (response.ok && response.headers.get("Content-Type")?.startsWith("text/csv")) return response.blob();
+    if (!response.headers.get("Content-Type")?.includes("application/json")) throw new Error(await response.text());
     const body = await response.json();
     if (!response.ok) throw new Error(body.error?.message || labels["errors.internal"]);
     return body;
@@ -57,11 +59,32 @@ document.addEventListener("DOMContentLoaded", async () => {
     anchor.href = href;
     return anchor;
   };
+  const lookupCache = new Map();
+  const lookup = (resource) => {
+    if (!lookupCache.has(resource)) lookupCache.set(resource, (async () => {
+      const values = new Map();
+      let page = 1, rows;
+      do {
+        rows = await request("lookups/" + resource + "?page=" + page++);
+        for (const {id, label} of rows) values.set(String(id), label);
+      } while (rows.length === 100);
+      return values;
+    })());
+    return lookupCache.get(resource);
+  };
+  const options = (entries, prompt = "—") => {
+    const select = node("select");
+    select.add(new Option(prompt, ""));
+    for (const [id, label] of entries) select.add(new Option(label, id));
+    return select;
+  };
+  const referenceLabels = new Map();
   const format = (key, value, route) => {
     if (value === null || value === undefined) return "—";
+    if (referenceLabels.has(key)) return referenceLabels.get(key).get(String(value)) ?? "—";
     if ((key === "date" || key === "billing_date") && Number.isSafeInteger(value) &&
         Math.abs(value) <= 8640000000000) {
-      return new Intl.DateTimeFormat(locale, {dateStyle: "medium", timeStyle: "short", timeZone: "UTC"})
+      return new Intl.DateTimeFormat(locale, {dateStyle: "medium", timeStyle: "medium", timeZone: "UTC"})
         .format(new Date(value * 1000)) + " UTC";
     }
     if (key === "status" && route === "planned-expenses" && Number.isInteger(value) && value >= 0 && value <= 3)
@@ -117,9 +140,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     form.method = "get";
     for (const key of keys) {
       const label = node("label", tr(key));
-      const input = node("input");
+      const input = referenceLabels.has(key) ? options(referenceLabels.get(key)) : node("input");
       input.name = key;
-      input.type = "number";
+      if (input.tagName === "INPUT") input.type = "number";
       input.value = query.get(key) || "";
       label.append(input);
       form.append(label);
@@ -144,14 +167,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       const name = field.name;
       if (name === "id" || name === "is_admin" || (name === "id_user" && actor.id_role !== 1)) continue;
       const label = node("label", tr(name));
-      const input = node("input");
+      const input = field.resource ? options(referenceLabels.get(name)) : node("input");
       input.name = name;
       input.required = Boolean(field.notnull || name === "username" || (!id && name === "password"));
       if (name === "password") {
         input.type = "password";
         input.autocomplete = "new-password";
         input.minLength = 12;
-      } else if (field.type !== "TEXT") {
+      } else if (!field.resource && field.type !== "TEXT") {
         input.type = "number";
         input.step = field.type === "REAL" ? "any" : "1";
         if (name.startsWith("id_")) input.min = "1";
@@ -163,12 +186,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (name !== "password" && row?.[name] != null) input.value = row[name];
       values.set(name, {field, input});
       label.append(input);
-      if (field.resource && field.resource !== "users") {
-        const picker = link("/" + field.resource, tr("look_up_id"));
-        picker.target = "_blank";
-        picker.rel = "noopener";
-        label.append(picker);
-      }
       form.append(label);
     }
     const save = node("button", tr(id ? "save" : "add"));
@@ -198,6 +215,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       request("i18n/" + locale.replace("-", "_")), request("auth/me")
     ]);
     labels = translations;
+    if (route.startsWith("data/") || route.startsWith("reports/")) {
+      const {workflow} = await import("/assets/js/workflows.js");
+      await workflow({root, route, node, tr, table, lookup, options, format, request, locale});
+      return;
+    }
     const queryString = query.size ? "?" + query : "";
     if (route === "dashboard") {
       const output = await request(route);
@@ -247,6 +269,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     const detail = /\/\d+$/.test(route);
     const base = detail ? route.slice(0, route.lastIndexOf("/")) : route;
     const output = await request((detail ? base + "?page_size=1" : base + queryString));
+    await Promise.all(output.fields.filter(f => f.resource).map(async f => {
+      referenceLabels.set(f.name, await lookup(f.resource));
+    }));
     const columns = output.fields.map((field) => field.name)
       .filter((key) => key !== "password" && key !== "is_admin");
     const addCurrency = (row) => {

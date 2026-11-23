@@ -13,6 +13,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!response.ok || !translationResponse.ok) return;
     const items = await response.json();
     const labels = await translationResponse.json();
+    const toggle = document.querySelector("#menu-toggle");
+    const mobile = matchMedia("(max-width: 47.99rem)");
+    function drawer(open) {
+      toggle.hidden = !mobile.matches;
+      toggle.setAttribute("aria-expanded", String(mobile.matches && open));
+      menu.hidden = mobile.matches && !open;
+    }
+    drawer(false);
+    mobile.addEventListener("change", () => drawer(false));
+    toggle.addEventListener("click", () => drawer(toggle.getAttribute("aria-expanded") !== "true"));
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && mobile.matches && !menu.hidden) {
+        drawer(false);
+        toggle.focus();
+      }
+    });
+    document.addEventListener("focusin", (event) => {
+      if (mobile.matches && !menu.hidden && !event.target.closest(".masthead")) drawer(false);
+    });
     const groups = new Map();
     for (const item of items) {
       let target = menu;
@@ -31,7 +50,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       link.textContent = item.label;
       if (location.pathname === item.href || (item.href !== "/" && location.pathname.startsWith(item.href + "/"))) {
         link.setAttribute("aria-current", "page");
-        if (item.group) target.parentElement.querySelector("summary").classList.add("active");
+        if (item.group) {
+          target.parentElement.open = true;
+          target.parentElement.querySelector("summary").classList.add("active");
+        }
       }
       target.append(link);
     }

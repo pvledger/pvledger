@@ -1430,6 +1430,149 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+  /lookups/{resource}:
+    get:
+      summary: Authorized labels and primary keys, up to 100 per page
+      parameters:
+        - {name: resource, in: path, required: true, schema: {type: string, enum: [banks, countries, currencies, expense-categories, users, roles]}}
+        - $ref: '#/components/parameters/page'
+      responses:
+        '200': &lookupResponse
+          description: Authorized lookup options in label and ID order
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: {type: integer}
+                    label: {type: string}
+  /lookups/accounts/{kind}:
+    get:
+      summary: Authorized account options
+      parameters:
+        - {name: kind, in: path, required: true, schema: {type: string, enum: [current, savings, credit]}}
+        - $ref: '#/components/parameters/page'
+      responses:
+        '200': *lookupResponse
+  /import/preview:
+    post:
+      summary: Review mapped expense rows from a local CSV, QIF, OFX or QFX file
+      parameters:
+        - $ref: '#/components/parameters/csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dataset, id_account, id_category, id_currency, rows]
+              properties:
+                dataset: {type: string, enum: [expenses]}
+                id_account: {type: integer}
+                id_category: {type: integer}
+                id_currency: {type: integer}
+                rows:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    type: object
+                    properties:
+                      name: {type: string}
+                      date: {type: integer, format: int64}
+                      amount: {type: number}
+                      description: {type: string}
+                      currency: {type: string, description: Source ISO code when supplied}
+                      source_id: {type: string}
+                      error: {type: string, description: File parser error for an ineligible row}
+      responses:
+        '200': {description: Mapped rows with error and duplicate flags and a session-bound ten-minute review token}
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /import/commit:
+    post:
+      summary: Insert the explicitly selected rows of a reviewed import atomically
+      parameters:
+        - $ref: '#/components/parameters/csrf'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, confirm, rows]
+              properties:
+                token: {type: string}
+                confirm: {type: boolean, enum: [true]}
+                rows: {type: array, minItems: 1, uniqueItems: true, items: {type: integer, minimum: 0}}
+      responses:
+        '200': {description: Imported, skipped and failed counts}
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /export/preview:
+    post:
+      summary: List available columns, authorized count and first ten matching rows
+      parameters:
+        - $ref: '#/components/parameters/csrf'
+      requestBody: &exportRequest
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dataset]
+              properties:
+                dataset: {type: string, enum: [accounts/current, accounts/savings, accounts/credit, history/current, history/savings, expenses, planned-expenses, recurring-expenses, expense-categories, income, planned-income, debts, taxes, banks, countries, currencies]}
+                format: {type: string, enum: [csv]}
+                columns: {type: array, items: {type: string}, uniqueItems: true, minItems: 1}
+                filters:
+                  type: object
+                  properties:
+                    id_account: {type: integer}
+                    id_currency: {type: integer}
+                    status: {type: integer}
+                    from: {type: integer, format: int64}
+                    to: {type: integer, format: int64}
+      responses:
+        '200': {description: Available columns, total, download row limit and sample items}
+        '422': { $ref: '#/components/responses/Error' }
+  /export/download:
+    post:
+      summary: Download the authorized selection as UTF-8 CSV
+      parameters:
+        - $ref: '#/components/parameters/csrf'
+      requestBody: *exportRequest
+      responses:
+        '200':
+          description: A spreadsheet-safe CSV attachment
+          content:
+            text/csv: {schema: {type: string, format: binary}}
+        '422': { $ref: '#/components/responses/Error' }
+  /reports/expense-categories:
+    get:
+      summary: Actual expense totals by currency ID and category ID
+      parameters:
+        - $ref: '#/components/parameters/account'
+        - &currencyFilter {name: id_currency, in: query, schema: {type: integer, minimum: 1}}
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+      responses:
+        '200': {description: Items with currency, category and amount}
+        '422': { $ref: '#/components/responses/Error' }
+  /reports/balances:
+    get:
+      summary: Stored balance snapshots ordered by currency, account, timestamp and snapshot ID
+      parameters:
+        - {name: account_type, in: query, schema: {type: string, enum: [current, savings], default: current}}
+        - $ref: '#/components/parameters/account'
+        - *currencyFilter
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+      responses:
+        '200': {description: Items with currency, account, snapshot ID, date and amount}
+        '422': { $ref: '#/components/responses/Error' }
   /ui/menu:
     get:
       summary: List menu entries available to the session

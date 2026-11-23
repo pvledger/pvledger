@@ -68,14 +68,14 @@ filter: Apply filters
 look_up_id: Look up ID
 fields:
   id: ID
-  id_account: Account ID
-  id_current_account: Current account ID
-  id_bank: Bank ID
-  id_user: User ID
-  id_currency: Currency ID
-  id_countries: Country ID
-  id_category: Category ID
-  id_role: Role ID
+  id_account: Account
+  id_current_account: Current account
+  id_bank: Bank
+  id_user: User
+  id_currency: Currency
+  id_countries: Country
+  id_category: Category
+  id_role: Role
   name: Name
   description: Description
   date: Date (UTC)
@@ -106,3 +106,80 @@ errors:
   too_large: The request is too large.
   busy: The database is busy. Try again shortly.
   internal: PVLedger could not complete the request.
+  preview_needed: Preview again. The review expired or the records changed.
+  narrow_filters: Narrow the filters to export or chart fewer records.
+  csv_only: CSV is the supported export format.
+  expense_target: Select actual expenses as the import destination.
+  invalid_expense: An expense needs a name, a valid date and a positive amount.
+  currency_mismatch: The source currency differs from the selected currency.
+  currency_missing: The statement must specify its currency.
+  import_limit: Use a file up to 512 KiB with at most 500 records and 128 columns.
+  invalid_file: The file is malformed or does not match the chosen format.
+  unsupported_record: This record type or adjustment is unsupported.
+  single_statement: Choose a file containing one bank or credit card statement.
+  empty_file: The file contains no transaction records.
+  invalid_date: The date is invalid or cannot be represented in whole UTC seconds.
+  invalid_columns: The number of fields differs from the column mapping.
+  invalid_amount: Check the amount and its decimal separator.
+  wrong_sign: This amount does not match the selected expense sign.
+  invalid_encoding: Choose the encoding used by the source file.
+  choose_rows: Select at least one valid row to import.
+  choose_columns: Select at least one column.
+reports: Reports
+expense_breakdown: Expenses by category
+balance_timeline: Balance history
+data_tools: Data
+import_file: Import
+export_file: Export
+current_history: Current account history
+savings_history: Savings account history
+select_file: Choose a statement
+source_file: File
+file_format: File format
+encoding: Text encoding
+delimiter: Column delimiter
+has_header: First row contains column names
+comma: Comma
+semicolon: Semicolon
+tab: Tab
+map_file: Map records
+destination: Destination
+source_account: Statement account
+source_id: Source identifier
+choose_value: Choose a record
+all_values: All
+records: records
+date_format: Source date format
+date_iso: YYYY-MM-DD
+date_mdy: Month / day / year
+date_dmy: Day / month / year
+date_unix: Unix seconds
+sign: Source expense sign
+negative_debits: Negative amounts are expenses
+positive_expenses: Positive amounts are expenses
+decimal: Decimal separator
+review: Review records
+row: Row
+include: Include row
+result: Review
+duplicate: Possible duplicate
+ready: Ready
+download_review: Download row details
+confirm_import: Import selected rows
+import_complete: Import complete
+imported: Imported
+skipped: Skipped
+failed: Failed
+export_scope: Choose data
+dataset: Dataset
+export_fields: Choose filters and columns
+columns: Columns
+label: Label
+download_csv: Download CSV
+report_filters: Filters
+from_date: From date (UTC)
+to_date: Through date (UTC)
+account_type: Account type
+category: Category
+share: Share
+pie_unavailable: A pie chart requires nonnegative category totals and a positive total.

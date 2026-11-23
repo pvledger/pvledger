@@ -55,3 +55,9 @@ back: Назад
 next: Далее
 previous: Назад
 filter: Применить фильтры
+reports: Отчёты
+expense_breakdown: Расходы по категориям
+balance_timeline: История баланса
+data_tools: Данные
+import_file: Импорт
+export_file: Экспорт

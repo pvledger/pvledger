@@ -1,6 +1,8 @@
 """Run PVLedger over HTTP against disposable databases and migration fixtures."""
 
 import contextlib
+import csv
+import io
 import hashlib
 import http.client
 import json
@@ -113,6 +115,57 @@ def verify_schema(db):
         assert db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == count
 
 
+def data_workflows(client, account, savings):
+    api = "/api/v1/"
+    assert client.request(api + "lookups/users")[0] == {"id": 1, "label": "admin"}
+    assert len(client.request(api + "lookups/countries?page=3")) == 49
+    assert client.request(api + "lookups/accounts/current") == [{"id": account, "label": "Checking"}]
+    category = client.request(api + "expense-categories", 201, "POST", {"name": "Food"})["id"]
+    names = ['=SUM(1,2)', 'Meal, "takeaway"']
+    valid = {"name": names[0], "amount": 12.5, "date": 1700000000, "source_id": "A"}
+    mapping = {"dataset": "expenses", "id_category": category, "id_currency": 1, "id_account": account}
+    payload = {**mapping, "rows": [valid, valid, {**valid, "date": "unknown"},
+                                   {**valid, "currency": "unmapped"}, {**valid, "name": names[1], "source_id": "B"}]}
+    preview = client.request(api + "import/preview", method="POST", payload=payload)
+    assert [r.get("duplicate") for r in preview["rows"]] == [False, True, None, None, False]
+    assert preview["rows"][2]["error"] and preview["rows"][3]["error"] == "currency_mismatch"
+    assert client.request(api + "expenses")["total"] == 0
+    commit = {"token": preview["token"], "rows": [0, 4], "confirm": True}
+    client.request(api + "import/commit", 422, "POST", {**commit, "rows": [0, 2]})
+    client.request(api + "import/commit", 409, "POST", {**commit, "confirm": False})
+    client.request(api + "import/commit", 403, "POST", commit, csrf="")
+    assert client.request(api + "import/commit", method="POST", payload=commit) == {"imported": 2, "skipped": 3, "failed": 0}
+    client.request(api + "import/commit", 409, "POST", commit)
+    preview = client.request(api + "import/preview", method="POST", payload={**mapping, "rows": [valid]})
+    assert preview["rows"][0]["duplicate"]
+    client.request(api + "import/preview", 422, "POST", {**payload, "dataset": "income"})
+    client.request(api + "expenses", 201, "POST", {**{k: v for k, v in mapping.items() if k != "dataset"},
+                   "id_currency": 2, "name": "Other", "amount": 7, "date": 1700000001})
+    groups = client.request(api + "reports/expense-categories")["items"]
+    assert [(r["id_currency"], r["category"], r["amount"]) for r in groups] == [(1, "Food", 25), (2, "Food", 7)]
+    assert client.request(api + "reports/expense-categories?from=1700000001&id_currency=1")["items"] == []
+    for kind, parent, amounts in [("current", account, [220.5, 221]), ("savings", savings, [900])]:
+        rows = client.request(api + f"reports/balances?account_type={kind}&id_account={parent}")["items"]
+        assert [r["amount"] for r in rows] == amounts
+    expense_export = {"dataset": "expenses", "columns": ["id_account_label", "name", "amount"],
+                      "filters": {"id_currency": 1}, "format": "csv"}
+    output = client.request(api + "export/preview", method="POST", payload=expense_export)
+    assert output["total"] == 2 and all(r["id_account_label"] == "Checking" for r in output["items"])
+    output = client.request(api + "export/download", method="POST", payload=expense_export)
+    assert list(csv.reader(io.StringIO(output))) == [expense_export["columns"], ["Checking", "'" + names[0], "12.5"],
+                                                    ["Checking", names[1], "12.5"]]
+    for dataset in ("accounts/current", "accounts/savings", "accounts/credit", "history/current", "history/savings",
+                    "income", "planned-income", "planned-expenses", "recurring-expenses", "debts", "taxes", "banks",
+                    "countries", "currencies", "expense-categories"):
+        result = client.request(api + "export/preview", method="POST", payload={"dataset": dataset})
+        assert "password" not in result["columns"]
+    client.request(api + "export/download", 422, "POST", {**expense_export, "format": "ofx"})
+    client.request(api + "export/download", 403, "POST", {"dataset": "users"})
+    client.request(api + "export/download", 422, "POST", {**expense_export, "columns": ["password"]})
+    assert client.request(api + f"accounts/current/{account}")["amount"] == 500.5
+    assert client.request(api + f"accounts/current/{account}/history")["total"] == 2
+
+
 def exercise(directory):
     path, port = config(directory)
     database = directory / "ledger.sqlite"
@@ -190,13 +243,23 @@ def exercise(directory):
         assert client.request(api + f"accounts/current/{account}")["amount"] == 500.5
         assert client.request(api + f"accounts/current/{account}/history")["total"] == 2
         assert client.request(api + f"accounts/savings/{savings}/history")["items"][0]["amount"] == 900
+        data_workflows(client, account, savings)
         client.request(api + "auth/logout", method="POST")
         client.request(api + "auth/me", 401)
         client.login("viewer")
+        assert client.request(api + "lookups/accounts/current") == []
+        assert client.request(api + "lookups/users") == [{"id": 3, "label": "viewer"}]
+        assert client.request(api + "reports/balances")["items"] == []
+        assert client.request(api + "reports/expense-categories")["items"] == []
+        assert client.request(api + "export/preview", method="POST", payload={"dataset": "income"})["total"] == 0
+        client.request(api + "import/preview", 403, "POST", {})
+        client.request("/data/import", 403)
         assert client.request(api + "income")["total"] == 0
         client.request(api + f"accounts/current/{account}/history", 404)
         client.request(api + "banks", 403, "POST", {"name": "Viewer", "id_countries": 1})
         client.login("writer")
+        client.request(api + "import/preview", 422, "POST", {"dataset": "expenses", "id_account": account,
+                       "id_currency": 1, "id_category": 1, "rows": []})
         client.request(api + "settings", 403, "PATCH", {"lang": "ru_RU"})
         client.request(api + "income/1", 404)
         client.request(api + "debts", 422, "POST", {"name": "Other account", "id_account": account})

@@ -1,0 +1,56 @@
+<!doctype html><meta charset="utf-8"><title>Import format regressions</title>
+<output>pending</output>
+<script type="module">
+import {mapRows, parseFile} from "../js/import-file.js";
+const output = document.querySelector("output");
+try {
+  const equal = (actual, expected) => {
+    if (actual !== expected) throw Error(JSON.stringify({actual, expected}));
+  };
+  const rejects = fn => {
+    try { fn(); } catch { return; }
+    throw Error("Unexpectedly accepted the file");
+  };
+  const csv = {delimiter: ";", header: true};
+  const options = {mapping: {name:"0",date:"1",amount:"2"}, date:"dmy", decimal:",", sign:"positive"};
+  const file = parseFile('\uFEFFname;date;amount\r\n"Food; ""market""\nmeal";29/02/2024;2,50\r\nbad;30/02/2024;1\r\nshort;1\n', "csv", csv);
+  const rows = mapRows(file, options);
+  equal(rows.length, 3);
+  equal(rows[0].name, 'Food; "market"\nmeal');
+  equal(rows[0].amount, 2.5);
+  equal(rows[0].date, Date.UTC(2024, 1, 29)/1000);
+  equal(rows[1].error, "invalid_date");
+  equal(rows[2].error, "invalid_columns");
+  rejects(() => parseFile('a;b\n"unfinished', "csv", csv));
+  rejects(() => parseFile('a;b\n"x"oops;2', "csv", csv));
+  const sample = new TextDecoder("windows-1252", {fatal:true}).decode(new Uint8Array([67,97,102,233,59,51]));
+  equal(parseFile(sample, "csv", {...csv, header: false}).records[0][0], "Café");
+  const qif = "!Account\nNChecking\nTBank\n^\n!Type:Bank\nD2/29'24\nT-12.40\nPMarket\nLFood\n^\nD3/1'24\nT20\nPRefund\n^";
+  const qifRows = mapRows(parseFile(qif, "qif", {}), {...options, sign:"negative", decimal:".", date:"mdy"});
+  equal(qifRows[0].source_account, "Checking");
+  equal(qifRows[0].date, rows[0].date);
+  equal(qifRows[0].amount, 12.4);
+  equal(qifRows[1].error, "wrong_sign");
+  rejects(() => parseFile(qif.slice(0,-1), "qif", {}));
+  rejects(() => parseFile(qif + "\n!Type:Invst", "qif", {}));
+  const xml = "<OFX><BANKMSGSRSV1><STMTTRNRS><STMTRS><CURDEF>USD</CURDEF><BANKTRANLIST><STMTTRN>" +
+    "<TRNTYPE>DEBIT</TRNTYPE><DTPOSTED>20240229121500.000[-5:EST]</DTPOSTED><TRNAMT>-7.25</TRNAMT>" +
+    "<FITID>ref-1</FITID><NAME>Food &amp; drinks</NAME></STMTTRN></BANKTRANLIST></STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>";
+  const sgml = "OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\n\n" +
+    xml.replace(/<\/(CURDEF|TRNTYPE|DTPOSTED|TRNAMT|FITID|NAME)>/g, "\n");
+  for (const [source, type] of [[xml,"ofx"],[sgml,"qfx"]]) {
+    const [row] = mapRows(parseFile(source, type, {}), {sign:"negative", decimal:".", date:"ofx"});
+    equal(row.name, "Food & drinks");
+    equal(row.currency, "USD");
+    equal(row.amount, 7.25);
+    equal(row.source_id, "ref-1");
+    equal(row.date, Date.UTC(2024,1,29,17,15)/1000);
+  }
+  rejects(() => parseFile(xml.replace("</FITID>", ""), "ofx", {}));
+  rejects(() => parseFile('<!DOCTYPE test>' + xml, "ofx", {}));
+  rejects(() => parseFile(xml.replace("<BANKTRANLIST>", "<BANKTRANLIST><UNKNOWN/>"), "ofx", {}));
+  equal(parseFile(xml.replace("</STMTTRN>","<ORIGCURRENCY/></STMTTRN>"), "qfx", {}).records[0].error, "unsupported_record");
+  output.textContent = "passed";
+} catch (err) { output.textContent = err.stack; }
+await fetch("/result", {method:"POST", body:output.textContent});
+</script>
