@@ -1,7 +1,10 @@
 services:
   pvledger:
     build: .
-    network_mode: host
+    ports:
+      - "0.0.0.0:8080:8080"
+    environment:
+      PVLEDGER_CONTAINER_BIND: "0.0.0.0"
     volumes:
       - pvledger-data:/var/lib/pvledger
     restart: unless-stopped

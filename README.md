@@ -40,7 +40,7 @@ The JSON API uses `/api/v1`. Income and balance history are available to browse 
 
 ## Optional Docker deployment
 
-Docker Compose uses host networking on Linux so the setup wizard and default service are reachable through the host's loopback interface. Check that port 8080 is available.
+Docker Compose publishes container port 8080 on the host at `127.0.0.1:8080`. The `PVLEDGER_CONTAINER_BIND` setting lets the setup wizard and the default service listen on the container network while retaining their local Host header checks. Check that host port 8080 is available.
 
 ```sh
 docker compose up --build -d

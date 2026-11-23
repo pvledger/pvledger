@@ -5,6 +5,7 @@
 #include "oatpp/web/server/HttpConnectionHandler.hpp"
 #include "oatpp/web/protocol/http/outgoing/ResponseFactory.hpp"
 #include <csignal>
+#include <cstdlib>
 #include <iostream>
 #include <pthread.h>
 #include <sys/stat.h>
@@ -113,6 +114,8 @@ void run(pvl::Config config) {
     pvl::Application application(config);
     const auto bind = application.ready() ? config.host : "127.0.0.1";
     const bool local = bind == "127.0.0.1" || bind == "localhost";
+    const auto* containerBind = std::getenv("PVLEDGER_CONTAINER_BIND");
+    const std::string listenAddress = local && containerBind && *containerBind ? containerBind : bind;
     auto router = HttpRouter::createShared();
     auto controller = std::make_shared<Controller>(application, local && (!application.ready() || !config.secureCookie),
                                                   config.port);
@@ -122,7 +125,7 @@ void run(pvl::Config config) {
     }
     auto handler = oatpp::web::server::HttpConnectionHandler::createShared(router);
     auto provider = oatpp::network::tcp::server::ConnectionProvider::createShared(
-        {oatpp::String(bind), static_cast<v_uint16>(config.port), oatpp::network::Address::IP_4});
+        {oatpp::String(listenAddress), static_cast<v_uint16>(config.port), oatpp::network::Address::IP_4});
 
     sigset_t signals;
     sigemptyset(&signals);
@@ -132,7 +135,7 @@ void run(pvl::Config config) {
         throw std::runtime_error("Cannot configure shutdown signals");
     oatpp::network::Server server(provider, handler);
     server.run(true);
-    std::cout << "PVLedger listening on " << bind << ':' << config.port << std::endl;
+    std::cout << "PVLedger listening on " << listenAddress << ':' << config.port << std::endl;
     int signal = 0;
     sigwait(&signals, &signal);
     server.stop();
