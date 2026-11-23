@@ -1,0 +1,32 @@
+<h1>{{setup}}</h1>
+<p>{{slogan}}</p>
+<form method="get" action="/setup" class="locale-form">
+  <label>{{language}} <select name="lang">{{languages}}</select></label>
+  <button type="submit">{{preview}}</button>
+</form>
+<form method="post" action="/setup" class="form-panel">
+  <input type="hidden" name="csrf" value="{{setup_token}}">
+  <fieldset>
+    <legend>{{settings}}</legend>
+    <input type="hidden" name="lang" value="{{locale_id}}">
+    <label>{{instance_name}} <input name="instance_name" maxlength="160"></label>
+    <label>{{default_currency}} <select name="default_currency"><option value="">—</option>{{currencies}}</select></label>
+    <label>{{theme}} <select name="theme">{{themes}}</select></label>
+  </fieldset>
+  <fieldset>
+    <legend>{{administrator}}</legend>
+    <label>{{username}} <input name="username" autocomplete="username" required maxlength="120"></label>
+    <label>{{password}} <input name="password" type="password" autocomplete="new-password" required minlength="12" maxlength="1024"></label>
+    <label>{{displayname}} <input name="displayname" maxlength="160"></label>
+    <label>{{firstname}} <input name="firstname" maxlength="160"></label>
+    <label>{{lastname}} <input name="lastname" maxlength="160"></label>
+  </fieldset>
+  <details>
+    <summary>{{connection}}</summary>
+    <dl>
+      <dt>SQLite</dt><dd>{{database_path}}</dd>
+      <dt>{{port_label}}</dt><dd>{{port}}</dd>
+    </dl>
+  </details>
+  <button type="submit">{{initialize}}</button>
+</form>

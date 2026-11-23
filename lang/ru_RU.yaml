@@ -1,0 +1,57 @@
+meta:
+  locale: ru_RU
+  name: Русский
+  direction: ltr
+navigation: Главное меню
+dashboard: Обзор
+accounts: Счета
+current_accounts: Текущие счета
+savings_accounts: Сберегательные счета
+credit_accounts: Кредитные счета
+income_group: Доходы
+income: Фактические доходы
+planned_income: Планируемые доходы
+expense_group: Расходы
+expenses: Фактические расходы
+planned_expenses: Планируемые расходы
+recurring_expenses: Регулярные расходы
+categories: Категории расходов
+debts: Непогашенные долги
+taxes: Налоги
+reference: Справочники
+banks: Банки
+countries: Страны
+currencies: Валюты
+administration: Администрирование
+users: Пользователи
+roles: Роли
+plugins: Расширения
+about: О приложении
+settings: Настройки
+login: Войти
+logout: Выйти
+setup: Первоначальная настройка
+preview: Предпросмотр языка
+initialize: Настроить PVLedger
+instance_name: Название экземпляра
+language: Язык
+default_currency: Валюта по умолчанию
+theme: Тема
+administrator: Первый администратор
+username: Имя пользователя
+password: Пароль
+displayname: Отображаемое имя
+firstname: Имя
+lastname: Фамилия
+connection: Параметры подключения
+port_label: Порт
+history: История остатков
+currency: Валюта
+save: Сохранить
+add: Добавить запись
+remove: Удалить запись
+empty: Нет записей для отображения.
+back: Назад
+next: Далее
+previous: Назад
+filter: Применить фильтры

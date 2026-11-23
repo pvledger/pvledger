@@ -1,0 +1,7 @@
+<h1>{{login}}</h1>
+<form id="login-form" class="form-panel" method="post" action="/login">
+  <label>{{username}} <input name="username" autocomplete="username" required maxlength="120"></label>
+  <label>{{password}} <input name="password" type="password" autocomplete="current-password" required maxlength="1024"></label>
+  <button type="submit">{{login}}</button>
+  <p role="alert" class="error" data-error></p>
+</form>

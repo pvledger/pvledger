@@ -1,0 +1,108 @@
+meta:
+  locale: en_US
+  name: English (United States)
+  direction: ltr
+slogan: Manager your personal assets with privacy
+navigation: Main navigation
+dashboard: Dashboard
+accounts: Accounts
+current_accounts: Current accounts
+savings_accounts: Savings accounts
+credit_accounts: Credit accounts
+income_group: Income
+income: Actual income
+planned_income: Planned income
+expense_group: Expenses
+expenses: Actual expenses
+planned_expenses: Planned expenses
+recurring_expenses: Recurring expenses
+categories: Expense categories
+debts: Outstanding debts
+taxes: Taxes
+reference: Reference data
+banks: Banks
+countries: Countries
+currencies: Currencies
+administration: Administration
+users: Users
+roles: Roles
+plugins: Plugins
+about: About
+settings: Settings
+login: Sign in
+logout: Sign out
+setup: Initial setup
+preview: Preview language
+initialize: Initialize PVLedger
+instance_name: Instance name
+language: Language
+default_currency: Default currency
+theme: Theme
+administrator: First administrator
+username: Username
+password: Password
+displayname: Display name
+firstname: First name
+lastname: Last name
+connection: Connection details
+port_label: Port
+history: Balance history
+snapshot_balance: Balance at snapshot
+remaining_debt: Remaining debt
+currency: Currency
+recent_expenses: Recent expenses
+save: Save
+add: Add record
+remove: Delete record
+confirm_remove: Delete this record?
+enable: Enable
+disable: Disable
+unavailable: Plugin manifest is unavailable.
+empty: No records to display.
+back: Back
+next: Next
+previous: Previous
+from: From (Unix seconds)
+to: To (Unix seconds)
+filter: Apply filters
+look_up_id: Look up ID
+fields:
+  id: ID
+  id_account: Account ID
+  id_current_account: Current account ID
+  id_bank: Bank ID
+  id_user: User ID
+  id_currency: Currency ID
+  id_countries: Country ID
+  id_category: Category ID
+  id_role: Role ID
+  name: Name
+  description: Description
+  date: Date (UTC)
+  billing_date: Billing date (UTC)
+  amount: Amount
+  interest: Interest
+  iso: ISO code
+  status: Status
+  account_currency: Account currency
+statuses:
+  "0": Planned
+  "1": Processed
+  "2": Processed with changes
+  "3": Declined
+errors:
+  invalid_input: Check the required values and their formats.
+  invalid_reference: Choose an existing record you can access.
+  forbidden: You do not have permission for this action.
+  unauthorized: Sign in to continue.
+  login_failed: Username or password is incorrect.
+  password_length: Use at least 12 characters for the password.
+  rate_limit: Too many attempts. Try again in a few minutes.
+  not_found: The requested page or record could not be found.
+  constraint: The change conflicts with an existing record or reference.
+  self_admin: Your administrator account must retain administrator access.
+  csrf: This request could not be verified. Reload the page and try again.
+  method: This action is unavailable for this resource.
+  too_large: The request is too large.
+  busy: The database is busy. Try again shortly.
+  internal: PVLedger could not complete the request.

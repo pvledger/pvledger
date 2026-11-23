@@ -1,0 +1,289 @@
+"""Run PVLedger over HTTP against disposable databases and migration fixtures."""
+
+import contextlib
+import hashlib
+import http.client
+import json
+import re
+import shutil
+from pathlib import Path
+import socket
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import time
+from urllib.parse import urlencode
+
+BINARY = Path(sys.argv[1]).resolve()
+ROOT = Path(__file__).resolve().parents[1]
+PASSWORD = "local-integration-password"
+SCHEMA = (ROOT / "db/pvledger.sql").read_text()
+
+
+class Client:
+    def __init__(self, port):
+        self.port = port
+        self.cookie = ""
+        self.csrf = ""
+
+    def request(self, path, status=200, method="GET", payload=None, csrf=None, form=False):
+        headers = {"X-CSRF-Token": self.csrf if csrf is None else csrf, "Cookie": self.cookie}
+        body = None
+        if payload is not None:
+            headers["Content-Type"] = "application/x-www-form-urlencoded" if form else "application/json"
+            body = urlencode(payload) if form else json.dumps(payload)
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=3)
+        try:
+            connection.request(method, path, body=body, headers=headers)
+            reply = connection.getresponse()
+            cookie = reply.getheader("Set-Cookie")
+            text = reply.read().decode()
+            assert reply.status == status, (method, path, status, reply.status, text)
+            if cookie is not None:
+                self.cookie = cookie.split(";")[0]
+            if text and "application/json" in reply.getheader("Content-Type", ""):
+                return json.loads(text)
+            return text
+        finally:
+            connection.close()
+
+    def login(self, username):
+        result = self.request("/api/v1/auth/login", method="POST",
+                              payload={"username": username, "password": PASSWORD}, csrf="login")
+        self.csrf = result["csrf"]
+
+
+def config(directory):
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    path = directory / "config.yaml"
+    path.write_text(f"""app:
+  host: 127.0.0.1
+  port: {port}
+database:
+  engine: sqlite
+  sqlite:
+    path: ledger.sqlite
+paths:
+  languages: {ROOT / 'lang'}
+  plugins: {ROOT / 'src/plugins'}
+  themes: {ROOT / 'themes'}
+""")
+    return path, port
+
+
+@contextlib.contextmanager
+def server(path, port):
+    process = subprocess.Popen([BINARY, "-c", path], stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, text=True)
+    try:
+        for _ in range(100):
+            if process.poll() is not None:
+                raise AssertionError(process.stdout.read())
+            try:
+                Client(port).request("/api/v1/system/health")
+                break
+            except OSError:
+                time.sleep(0.03)
+        else:
+            raise AssertionError("HTTP startup timed out")
+        yield Client(port)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.communicate()
+                raise AssertionError("Server did not shut down")
+
+
+def verify_schema(db):
+    tables = [name for name, in db.execute(
+        "SELECT name FROM sqlite_schema WHERE type='table' AND name LIKE 'pvl_%'")]
+    assert len(tables) == 20
+    columns = sum(len(db.execute(f"PRAGMA table_info({table})").fetchall()) for table in tables)
+    keys = sum(len(db.execute(f"PRAGMA foreign_key_list({table})").fetchall()) for table in tables)
+    assert (columns, keys) == (119, 26)
+    assert list(db.execute("PRAGMA foreign_key_check")) == []
+    for table, count in [("pvl_countries", 249), ("pvl_currencies", 178), ("pvl_user_roles", 3)]:
+        assert db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == count
+
+
+def exercise(directory):
+    path, port = config(directory)
+    database = directory / "ledger.sqlite"
+    with server(path, port) as client:
+        client.request("/", 303)
+        client.request("/api/v1/income", 404)
+        for locale, title in [("ru_RU", "Первоначальная настройка"), ("kk_KZ", "Бастапқы баптау"),
+                              ("de_DE", "Ersteinrichtung")]:
+            assert title in client.request("/setup?lang=" + locale)
+        page = client.request("/setup")
+        setup_token = re.search(r'name="csrf" value="([a-f0-9]{64})"', page)[1]
+        fields = {"lang": "en_US", "theme": "default", "default_currency": "1",
+                  "username": "admin", "password": PASSWORD, "instance_name": "<Local & private>"}
+        client.request("/setup", 422, "POST", fields, form=True)
+        fields["csrf"] = setup_token
+        client.request("/setup", 303, "POST", fields, form=True)
+        client.request("/api/v1/income", 401)
+        client.request("/setup", 404)
+        client.request("/api/v1/auth/login", 403, "POST", {"username": "admin", "password": PASSWORD})
+        client.login("admin")
+        assert "&lt;Local &amp; private&gt;" in client.request("/")
+        assert client.request("/assets/js/app.js").startswith('"use strict"')
+        api = "/api/v1/"
+        assert len(client.request(api + "ui/menu")) > 10
+        assert client.request(api + "i18n/de_DE")["dashboard"] == "Übersicht"
+        assert client.request(api + "dashboard")["current_accounts"] == []
+        assert "password" not in client.request(api + "users/1")
+        client.request(api + "banks", 403, "POST", {"name": "Blocked", "id_countries": 1}, csrf="")
+        client.request(api + "banks", 409, "POST", {"name": "Bad reference", "id_countries": 99999})
+        bank = client.request(api + "banks", 201, "POST", {"name": "Bank", "id_countries": 1})["id"]
+        account = client.request(api + "accounts/current", 201, "POST",
+                                 {"name": "Checking", "id_bank": bank, "id_currency": 1,
+                                  "id_user": 1, "amount": 500.5})["id"]
+        savings = client.request(api + "accounts/savings", 201, "POST",
+                                 {"name": "Savings", "id_bank": bank, "id_currency": 2,
+                                  "id_user": 1, "amount": 200})["id"]
+        client.request(api + f"banks/{bank}", 409, "DELETE")
+        client.request(api + "planned-expenses", 422, "POST",
+                       {"name": "Expense", "id_account": account, "id_currency": 1, "status": 4})
+        for role, username in [(2, "writer"), (3, "viewer")]:
+            client.request(api + "users", 201, "POST",
+                           {"username": username, "password": PASSWORD, "id_role": role})
+        client.request(api + "settings", 200, "PATCH", {"lang": "de_DE"})
+        assert "Übersicht" in client.request("/")
+        client.request(api + "settings", 200, "PATCH", {"lang": "en_US"})
+        plugins = client.request(api + "plugins")
+        sample = next(plugin for plugin in plugins if plugin["path"] == "example.sample")
+        client.request("/plugins/example.sample", 404)
+        client.request(api + f"plugins/{sample['id']}/enable", method="POST")
+        assert "local PVLedger plugin" in client.request("/plugins/example.sample")
+        client.request(api + f"plugins/{sample['id']}/disable", method="POST")
+        client.request("/plugins/example.sample", 404)
+        with sqlite3.connect(database) as db:
+            db.execute("PRAGMA foreign_keys=ON")
+            verify_schema(db)
+            assert db.execute("SELECT count(*) FROM pvl_settings").fetchone() == (1,)
+            for name in ("pvl_income", "pvl_income_planned"):
+                db.execute(f"INSERT INTO {name}(id_account,name,amount,status,date) VALUES(?,?,?,?,?)",
+                           (account, "Income", 123.25, 17, 1_700_000_000))
+                for key in ("id_account", "name", "amount", "status", "date"):
+                    try:
+                        db.execute(f"UPDATE {name} SET {key}=NULL")
+                    except sqlite3.IntegrityError:
+                        continue
+                    raise AssertionError(f"{name}.{key} allowed NULL")
+            db.executemany("INSERT INTO pvl_account_history_current(id_account,date,amount) VALUES (?,?,?)",
+                           [(account, 1_700_000_000, 220.5), (account, 1_700_000_000, 221)])
+            db.execute("INSERT INTO pvl_account_history_savings(id_account,date,amount) VALUES (?,?,?)",
+                       (savings, 1_700_000_001, 900))
+        for route in ("income", "planned-income"):
+            result = client.request(api + route + f"?id_account={account}&from=1700000000&status=17")
+            assert result["total"] == 1 and result["items"][0]["status"] == 17
+            assert result["items"][0]["date"] == 1_700_000_000
+            client.request(api + route, 403, "POST", {"status": 17})
+        assert client.request(api + f"accounts/current/{account}")["amount"] == 500.5
+        assert client.request(api + f"accounts/current/{account}/history")["total"] == 2
+        assert client.request(api + f"accounts/savings/{savings}/history")["items"][0]["amount"] == 900
+        client.request(api + "auth/logout", method="POST")
+        client.request(api + "auth/me", 401)
+        client.login("viewer")
+        assert client.request(api + "income")["total"] == 0
+        client.request(api + f"accounts/current/{account}/history", 404)
+        client.request(api + "banks", 403, "POST", {"name": "Viewer", "id_countries": 1})
+        client.login("writer")
+        client.request(api + "settings", 403, "PATCH", {"lang": "ru_RU"})
+        client.request(api + "income/1", 404)
+        client.request(api + "debts", 422, "POST", {"name": "Other account", "id_account": account})
+        client.request(api + "accounts/current", 201, "POST",
+                       {"name": "Owned by writer", "id_bank": bank, "id_currency": 1})
+
+    with server(path, port) as client:
+        client.login("admin")
+        assert client.request("/api/v1/settings")["instance_name"] == "<Local & private>"
+        assert client.request("/api/v1/accounts/current")["total"] == 2
+        with sqlite3.connect(database) as db:
+            verify_schema(db)
+
+
+def migration(directory, version, blocked=False):
+    path, port = config(directory)
+    database = directory / "ledger.sqlite"
+    with sqlite3.connect(database) as db:
+        db.executescript(SCHEMA)
+        db.execute("PRAGMA foreign_keys=OFF")
+        db.execute("INSERT INTO pvl_users(id,username,password,id_role) VALUES(1,'admin',?,1)",
+                   (hashlib.sha256(PASSWORD.encode()).hexdigest(),))
+        db.execute("INSERT INTO pvl_settings(id,db_version,instance_name) VALUES(1,?,'Legacy ledger')", (version,))
+        db.execute("INSERT INTO pvl_banks(id,name,id_countries) VALUES (1,'Legacy bank',1)")
+        db.execute("INSERT INTO pvl_accounts_current(id,id_bank,id_user,id_currency,name,amount) "
+                   "VALUES(1,1,1,1,'Legacy current',33)")
+        db.execute("INSERT INTO pvl_account_history_current(id,id_account,date,amount) VALUES (7,1,100,10.5)")
+        if version in {"0.5", "0.6", "0.6.1"}:
+            db.execute("DROP TABLE pvl_income")
+            db.execute("DROP TABLE pvl_income_planned")
+        if version == "0.5":
+            db.execute("DROP TABLE pvl_account_history_current")
+            db.execute("DROP TABLE pvl_account_history_savings")
+        if version == "0.6":
+            db.execute("DROP TABLE pvl_account_history_current")
+            db.execute("CREATE TABLE pvl_account_history_current (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                       "id_account INTEGER REFERENCES pvl_accounts_current(id), date INTEGER NOT NULL, amount REAL NOT NULL)")
+            db.execute("INSERT INTO pvl_account_history_current(id,id_account,date,amount) VALUES (7,?,100,10.5)",
+                       (None if blocked else 1,))
+        if version == "0.7":
+            for table in ("pvl_income", "pvl_income_planned"):
+                db.execute(f"ALTER TABLE {table} DROP COLUMN date")
+            if blocked:
+                db.execute("INSERT INTO pvl_income_planned(id_account,name,amount,status) VALUES(1,'Legacy',14,9)")
+    if blocked:
+        failure = subprocess.run([BINARY, "-c", path], capture_output=True, text=True, timeout=5)
+        assert failure.returncode != 0 and "Migration blocked:" in failure.stderr, failure.stderr
+        with sqlite3.connect(database) as db:
+            assert db.execute("SELECT db_version FROM pvl_settings").fetchone() == (version,)
+            if version == "0.7":
+                assert db.execute("SELECT name,amount FROM pvl_income_planned").fetchone() == ("Legacy", 14)
+                assert not any(row[1] == "date" for row in db.execute("PRAGMA table_info(pvl_income)"))
+            else:
+                assert db.execute("SELECT id_account,amount FROM pvl_account_history_current").fetchone() == (None, 10.5)
+    else:
+        with server(path, port) as client:
+            client.login("admin")
+            assert client.request("/api/v1/settings")["db_version"] == "0.7.1"
+            assert client.request("/api/v1/accounts/current/1")["amount"] == 33
+            history = client.request("/api/v1/accounts/current/1/history")
+            if version != "0.5":
+                assert history["items"][0]["id"] == 7 and history["items"][0]["amount"] == 10.5
+            with sqlite3.connect(database) as db:
+                verify_schema(db)
+                assert db.execute("SELECT password FROM pvl_users").fetchone()[0].startswith("pbkdf2-sha256$")
+    backup, = list(directory.glob("*.backup"))
+    with sqlite3.connect(backup) as db:
+        assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        assert db.execute("SELECT db_version FROM pvl_settings").fetchone() == (version,)
+
+
+with tempfile.TemporaryDirectory() as temporary:
+    exercise(Path(temporary))
+with tempfile.TemporaryDirectory() as temporary:
+    directory = Path(temporary)
+    database = directory / "ledger.sqlite"
+    shutil.copyfile(ROOT / "db/pvledger.db", database)
+    path, port = config(directory)
+    with server(path, port) as client:
+        assert client.request("/api/v1/system/health")["status"] == "setup"
+        with sqlite3.connect(database) as db:
+            verify_schema(db)
+            for table in ("pvl_income", "pvl_income_planned"):
+                date = next(field for field in db.execute(f"PRAGMA table_info({table})") if field[1] == "date")
+                assert date[2:4] == ("INTEGER", 1)
+            assert db.execute("SELECT count(*) FROM pvl_settings").fetchone() == (0,)
+for version, blocked in [("0.5", False), ("0.6", False), ("0.6", True),
+                         ("0.6.1", False), ("0.7", False), ("0.7", True)]:
+    with tempfile.TemporaryDirectory() as temporary:
+        migration(Path(temporary), version, blocked)

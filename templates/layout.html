@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="{{locale}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{csrf}}">
+  <title>{{title}} · PVLedger</title>
+  <link rel="stylesheet" href="/assets/theme.css">
+  <script src="/assets/js/menu.js" defer></script>
+  <script src="/assets/js/app.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <a class="brand" href="/">{{brand}}</a>
+    <nav id="menu" aria-label="{{navigation}}"></nav>
+  </header>
+  <main id="main">{{content}}</main>
+</body>
+</html>

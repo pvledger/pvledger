@@ -1,0 +1,57 @@
+meta:
+  locale: de_DE
+  name: Deutsch
+  direction: ltr
+navigation: Hauptnavigation
+dashboard: Übersicht
+accounts: Konten
+current_accounts: Girokonten
+savings_accounts: Sparkonten
+credit_accounts: Kreditkonten
+income_group: Einnahmen
+income: Tatsächliche Einnahmen
+planned_income: Geplante Einnahmen
+expense_group: Ausgaben
+expenses: Tatsächliche Ausgaben
+planned_expenses: Geplante Ausgaben
+recurring_expenses: Wiederkehrende Ausgaben
+categories: Ausgabenkategorien
+debts: Offene Schulden
+taxes: Steuern
+reference: Stammdaten
+banks: Banken
+countries: Länder
+currencies: Währungen
+administration: Verwaltung
+users: Benutzer
+roles: Rollen
+plugins: Erweiterungen
+about: Über PVLedger
+settings: Einstellungen
+login: Anmelden
+logout: Abmelden
+setup: Ersteinrichtung
+preview: Sprachvorschau
+initialize: PVLedger einrichten
+instance_name: Instanzname
+language: Sprache
+default_currency: Standardwährung
+theme: Design
+administrator: Erstes Administratorkonto
+username: Benutzername
+password: Passwort
+displayname: Anzeigename
+firstname: Vorname
+lastname: Nachname
+connection: Verbindungsdetails
+port_label: Port
+history: Kontostandsverlauf
+currency: Währung
+save: Speichern
+add: Datensatz hinzufügen
+remove: Datensatz löschen
+empty: Keine Datensätze vorhanden.
+back: Zurück
+next: Weiter
+previous: Zurück
+filter: Filtern

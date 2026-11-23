@@ -1,0 +1,57 @@
+meta:
+  locale: kk_KZ
+  name: Қазақша
+  direction: ltr
+navigation: Негізгі мәзір
+dashboard: Шолу
+accounts: Шоттар
+current_accounts: Ағымдағы шоттар
+savings_accounts: Жинақ шоттары
+credit_accounts: Несие шоттары
+income_group: Кірістер
+income: Нақты кірістер
+planned_income: Жоспарланған кірістер
+expense_group: Шығыстар
+expenses: Нақты шығыстар
+planned_expenses: Жоспарланған шығыстар
+recurring_expenses: Тұрақты шығыстар
+categories: Шығыс санаттары
+debts: Өтелмеген қарыздар
+taxes: Салықтар
+reference: Анықтамалықтар
+banks: Банктер
+countries: Елдер
+currencies: Валюталар
+administration: Әкімшілендіру
+users: Пайдаланушылар
+roles: Рөлдер
+plugins: Кеңейтімдер
+about: PVLedger туралы
+settings: Баптаулар
+login: Кіру
+logout: Шығу
+setup: Бастапқы баптау
+preview: Тілді алдын ала көру
+initialize: PVLedger жүйесін баптау
+instance_name: Дана атауы
+language: Тіл
+default_currency: Әдепкі валюта
+theme: Тақырып
+administrator: Алғашқы әкімші
+username: Пайдаланушы аты
+password: Құпиясөз
+displayname: Көрсетілетін ат
+firstname: Аты
+lastname: Тегі
+connection: Қосылым параметрлері
+port_label: Порт
+history: Шот қалдығының тарихы
+currency: Валюта
+save: Сақтау
+add: Жазба қосу
+remove: Жазбаны жою
+empty: Көрсетілетін жазбалар жоқ.
+back: Артқа
+next: Келесі
+previous: Алдыңғы
+filter: Сүзгілерді қолдану

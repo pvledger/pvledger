@@ -1,0 +1,9 @@
+<h1>{{settings}}</h1>
+<form id="settings-form" class="form-panel">
+  <label>{{instance_name}} <input name="instance_name" value="{{current_instance}}" maxlength="160"></label>
+  <label>{{language}} <select name="lang">{{languages}}</select></label>
+  <label>{{default_currency}} <select name="default_currency"><option value="">—</option>{{currencies}}</select></label>
+  <label>{{theme}} <select name="theme">{{themes}}</select></label>
+  <button type="submit">{{save}}</button>
+  <p role="alert" class="error" data-error></p>
+</form>

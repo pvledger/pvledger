@@ -1,1 +1,14 @@
----
+app:
+  host: "127.0.0.1"
+  port: 8080
+  secure_cookie: false
+
+database:
+  engine: sqlite
+  sqlite:
+    path: "./data/pvledger.sqlite"
+
+paths:
+  languages: "../../lang"
+  plugins: "../plugins"
+  themes: "../../themes"
