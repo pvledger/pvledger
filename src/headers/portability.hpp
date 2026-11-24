@@ -14,6 +14,7 @@ extern const std::vector<Resource> resources;
 Value lookup(Repository& db, const std::string& route, int role, Json::Int64 user, int page);
 Value report(Repository& db, const std::string& name, const Params& filters, int role, Json::Int64 user);
 Response exportData(Repository& db, const Value& input, bool download, int role, Json::Int64 user);
+Response spreadsheet(const std::string& format, const std::string& name, const Value& columns, const Value& rows);
 Value previewExpenses(Repository& db, const Value& input, int role, Json::Int64 user);
 Value commitExpenses(Repository& db, const Value& preview, const Value& selection, int role, Json::Int64 user);
 }

@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 from urllib.parse import urlencode
 from xml.etree import ElementTree
 
@@ -36,13 +37,21 @@ class Client:
         body = None
         if payload is not None:
             headers["Content-Type"] = "application/x-www-form-urlencoded" if form else "application/json"
-            body = urlencode(payload) if form else json.dumps(payload)
+            if isinstance(payload, bytes):
+                headers["Content-Type"] = "application/octet-stream"
+                body = payload
+            else:
+                body = urlencode(payload) if form else json.dumps(payload)
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=3)
         try:
             connection.request(method, path, body=body, headers=headers)
             reply = connection.getresponse()
             cookie = reply.getheader("Set-Cookie")
-            text = reply.read().decode()
+            self.mime = reply.getheader("Content-Type", "").split(";")[0]
+            text = reply.read()
+            if self.mime.startswith("text/") or self.mime in ("application/json", "application/x-ofx",
+                                                               "application/qif", "application/vnd.intu.qfx"):
+                text = text.decode()
             assert reply.status == status, (method, path, status, reply.status, text)
             self.attachment = reply.getheader("Content-Disposition")
             if cookie is not None:
@@ -120,6 +129,47 @@ def verify_schema(db):
         assert db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == count
 
 
+def verify_workbook(client, selection, names):
+    for fmt in ("ods", "xlsx"):
+        payload = {**selection, "format": fmt}
+        preview = client.request("/api/v1/export/preview", method="POST", payload=payload)
+        assert preview["total"] == 2
+        data = client.request("/api/v1/export/download", method="POST", payload=payload)
+        assert client.attachment == f'attachment; filename="pvledger-expenses.{fmt}"'
+        with zipfile.ZipFile(io.BytesIO(data)) as book:
+            assert book.testzip() is None
+            for path in book.namelist():
+                if path.endswith((".xml", ".rels")):
+                    ElementTree.fromstring(book.read(path))
+            if fmt == "xlsx":
+                assert client.mime == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                sheet = ElementTree.fromstring(book.read("xl/worksheets/sheet1.xml"))
+                rows = sheet.findall(".//{*}row")
+                assert [c.findtext(".//{*}t") for c in rows[0]] == selection["columns"]
+                for row, name in zip(rows[1:], names):
+                    assert row[0].findtext(".//{*}t") == "Checking"
+                    assert row[1].get("t") == "inlineStr" and row[1].findtext(".//{*}t") == name
+                    assert row[2].findtext("{*}v") == "12.5" and row[2].get("t") is None
+                assert sheet.find(".//{*}f") is None
+            else:
+                assert book.namelist()[0] == "mimetype" and book.getinfo("mimetype").compress_type == zipfile.ZIP_STORED
+                assert book.read("mimetype").decode() == client.mime == "application/vnd.oasis.opendocument.spreadsheet"
+                # LibreOffice identifies the ODS from the first local ZIP header, before the directory.
+                assert int.from_bytes(data[22:26], "little") == len(client.mime)
+                assert data[38:38 + len(client.mime)].decode() == client.mime
+                sheet = ElementTree.fromstring(book.read("content.xml"))
+                rows = sheet.findall(".//{*}table-row")
+                assert [c.findtext("{*}p") for c in rows[0]] == selection["columns"]
+                office = "{urn:oasis:names:tc:opendocument:xmlns:office:1.0}"
+                for row, name in zip(rows[1:], names):
+                    assert row[0].findtext("{*}p") == "Checking"
+                    assert row[1].get(office + "value-type") == "string"
+                    paragraph = row[1].find("{*}p")
+                    assert (paragraph.text or "") + "".join(" " + (space.tail or "") for space in paragraph) == name
+                    assert row[2].get(office + "value-type") == "float" and row[2].get(office + "value") == "12.5"
+            assert len(rows) == 3
+
+
 def data_workflows(client, account, savings, database):
     api = "/api/v1/"
     assert client.request(api + "lookups/users")[0] == {"id": 1, "label": "admin"}
@@ -129,7 +179,7 @@ def data_workflows(client, account, savings, database):
     opening = client.request(current)["amount"]
     existing_history = client.request(current + "/history")
     category = client.request(api + "expense-categories", 201, "POST", {"name": "Food"})["id"]
-    names = ['=SUM(1,2)', 'Meal, "takeaway"']
+    names = ['=SUM(1,2)', 'Обед & <чай>, "takeaway"']
     valid = {"name": names[0], "amount": 12.5, "date": 1700000000, "source_id": "A"}
     mapping = {"dataset": "expenses", "id_category": category, "id_currency": 1, "id_account": account}
     payload = {**mapping, "rows": [valid, valid, {**valid, "date": "unknown"},
@@ -183,6 +233,20 @@ def data_workflows(client, account, savings, database):
     output = client.request(api + "export/download", method="POST", payload=expense_export)
     assert list(csv.reader(io.StringIO(output))) == [expense_export["columns"], ["Checking", "'" + names[0], "12.5"],
                                                     ["Checking", names[1], "12.5"]]
+    verify_workbook(client, expense_export, names)
+    # Legacy SQLite data may contain 64-bit IDs or characters XML cannot represent.
+    with sqlite3.connect(database) as db:
+        db.execute("INSERT INTO pvl_expenses_categories(id,name) VALUES(?,?)", (987654321012345678, "bad\uffff"))
+    for fmt in ("ods", "xlsx"):
+        payload = {"dataset": "expense-categories", "format": fmt}
+        client.request(api + "export/download", 422, "POST", {**payload, "columns": ["name"]})
+        workbook = client.request(api + "export/download", method="POST", payload={**payload, "columns": ["id"]})
+        with zipfile.ZipFile(io.BytesIO(workbook)) as book:
+            xml = book.read("content.xml" if fmt == "ods" else "xl/worksheets/sheet1.xml")
+            assert b">987654321012345678<" in xml
+            assert b"<v>987654321012345678" not in xml and b'office:value="987654321012345678"' not in xml
+    with sqlite3.connect(database) as db:
+        db.execute("DELETE FROM pvl_expenses_categories WHERE id=?", (987654321012345678,))
     for dataset in ("accounts/current", "accounts/savings", "accounts/credit", "history/current", "history/savings",
                     "income", "planned-income", "planned-expenses", "recurring-expenses", "debts", "taxes", "banks",
                     "countries", "currencies", "expense-categories"):
@@ -232,6 +296,82 @@ def data_workflows(client, account, savings, database):
     assert client.request(spending + "?id_currency=2")["items"] == rows[-1:]
     assert client.request(spending + "?id_account=99999")["items"] == []
     client.request(spending + "?from=1&to=0", 422)
+    today = int(time.time()) // 86400 * 86400
+    tomorrow = today + 86400
+    base = {"id_account": account, "name": "Estimate boundary"}
+    for date in (today - 1, tomorrow - 1, tomorrow):
+        client.request(api + "income", 201, "POST", {**base, "amount": 12, "date": date, "status": 1})
+        client.request(api + "expenses", 201, "POST", {**expense, "amount": 3, "date": date})
+        client.request(api + "planned-income", 201, "POST", {**base, "amount": 40, "date": date, "status": 0})
+        client.request(api + "planned-expenses", 201, "POST", {**base, "id_currency": 1, "amount": 10, "date": date})
+    for status in (1, 2, 3):
+        client.request(api + "planned-income", 201, "POST", {**base, "amount": 90, "date": tomorrow, "status": status})
+        client.request(api + "planned-expenses", 201, "POST", {**base, "id_currency": 1, "amount": 60,
+                                                              "date": tomorrow, "status": status})
+    client.request(api + "planned-income", 201, "POST", {**base, "id_account": other, "amount": 70,
+                                                          "date": tomorrow, "status": 0})
+    estimates = api + f"reports/estimates?from={today - 1}&to={tomorrow}"
+    rows = client.request(estimates)["items"]
+    assert [(r["id_currency"], r["day"], r["basis"], r["income"], r["expenses"], r["net"]) for r in rows] == [
+        (1, today - 86400, "actual", 12, 3, 9), (1, today, "actual", 12, 3, 9),
+        (1, tomorrow, "planned", 40, 10, 30), (2, tomorrow, "planned", 70, 0, 70)]
+    assert client.request(estimates + f"&id_account={account}")["items"] == rows[:3]
+    assert client.request(estimates + "&id_currency=2")["items"] == rows[3:]
+    assert 'data-route="reports/estimates"' in client.request("/reports/estimates")
+
+
+def backup_workflows(client, directory):
+    settings = "/api/v1/settings"
+    restore = settings + "/restore"
+    setup_restore = "/api/v1/setup/restore"
+    assert restore in client.request("/settings")
+    data = client.request(settings + "/backup")
+    assert client.mime == "application/vnd.sqlite3" and data.startswith(b"SQLite format 3\0")
+    assert client.attachment == 'attachment; filename="pvledger-backup.sqlite"'
+    saved = directory / "saved.sqlite"
+    saved.write_bytes(data)
+    with sqlite3.connect(saved) as db:
+        verify_schema(db)
+        dump = list(db.iterdump())
+        assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+        db.execute("UPDATE pvl_users SET password='pbkdf2-sha256$invalid' WHERE id_role=1")
+    second = Client(client.port)
+    second.login("viewer")
+    second.request(settings + "/backup", 403)
+    second.request(restore, 403, "POST", data)
+    client.request(setup_restore, 404, "POST", data)
+    client.request(restore, 403, "POST", data, csrf="wrong")
+    client.request(restore, 415, "POST", {})
+    client.request(settings, method="PATCH", payload={"instance_name": "After backup"})
+    for invalid in (b"", b"not a database", data[:100], data[:-1], saved.read_bytes()):
+        client.request(restore, 422, "POST", invalid)
+        assert client.request(settings)["instance_name"] == "After backup"
+    client.request(restore, 204, "POST", data)
+    client.request(settings, 401)
+    second.request("/api/v1/auth/me", 401)
+    client.login("admin")
+    assert client.request(settings)["instance_name"] == "<Local & private>"
+    with sqlite3.connect(directory / "ledger.sqlite") as db:
+        assert list(db.iterdump()) == dump
+
+    with tempfile.TemporaryDirectory() as new:
+        destination = Path(new)
+        path, port = config(destination)
+        with server(path, port) as fresh:
+            form = fresh.request("/setup")
+            token = re.search(r'name="csrf" value="([a-f0-9]{64})"', form)[1]
+            assert setup_restore in form
+            fresh.request(setup_restore, 403, "POST", data, csrf="wrong")
+            fresh.request(setup_restore, 422, "POST", b"bad backup", csrf=token)
+            assert fresh.request("/api/v1/system/health")["status"] == "setup"
+            fresh.request(setup_restore, 204, "POST", data, csrf=token)
+            fresh.request("/setup", 404)
+            fresh.request(setup_restore, 404, "POST", data, csrf=token)
+        with server(path, port) as restored:
+            restored.login("admin")
+            assert restored.request(settings)["instance_name"] == "<Local & private>"
+            with sqlite3.connect(destination / "ledger.sqlite") as db:
+                assert list(db.iterdump()) == dump
 
 
 def exercise(directory):
@@ -372,6 +512,11 @@ def exercise(directory):
         assert client.request(api + "lookups/users") == [{"id": 3, "label": "viewer"}]
         assert client.request(api + "reports/balances")["items"] == []
         assert client.request(api + "reports/expense-categories")["items"] == []
+        assert client.request(api + "reports/estimates")["items"] == []
+        assert client.request(api + f"reports/estimates?id_account={account}")["items"] == []
+        for fmt in ("ods", "xlsx"):
+            assert client.request(api + "export/preview", method="POST",
+                                  payload={"dataset": "expenses", "format": fmt})["total"] == 0
         assert client.request(api + f"reports/spending?id_account={account}")["items"] == []
         assert client.request(api + "export/preview", method="POST", payload={"dataset": "income"})["total"] == 0
         client.request(api + "import/preview", 403, "POST", {})
@@ -396,6 +541,9 @@ def exercise(directory):
             client.request(api + route, 422, "POST", {**entry, "id_account": account})
             client.request(api + route, 201, "POST", entry)
         assert [r["amount"] for r in client.request(owned + "/history")["items"]] == [30, 0]
+        owned_rows = client.request(api + "reports/estimates")["items"]
+        assert owned_rows == [{"id_currency": 1, "currency": "AED", "day": 0,
+                               "basis": "actual", "income": 30, "expenses": 0, "net": 30}]
 
     with server(path, port) as client:
         client.login("admin")
@@ -404,8 +552,11 @@ def exercise(directory):
         assert client.request("/api/v1/accounts/current")["total"] == 3
         assert client.request(owned)["amount"] == 30
         assert client.request(owned + "/history")["total"] == 2
+        both = client.request(api + "reports/estimates?from=0&to=3600&id_currency=1")["items"]
+        assert len(both) == 1 and both[0]["income"] == 30 and both[0]["expenses"] == 0
         with sqlite3.connect(database) as db:
             verify_schema(db)
+        backup_workflows(client, directory)
 
 
 def migration(directory, version, blocked=False):
@@ -466,6 +617,12 @@ def migration(directory, version, blocked=False):
                 assert client.request("/api/v1/income")["total"] == 1
                 client.request("/api/v1/income", 201, "POST", {"id_account": 1, "name": "New", "amount": 12, "status": 1, "date": 100})
                 assert client.request("/api/v1/accounts/current/1/history")["items"][0]["amount"] == 45
+                backup, = directory.glob("*.backup")
+                client.request("/api/v1/settings/restore", 204, "POST", backup.read_bytes())
+                client.login("admin")
+                assert client.request("/api/v1/settings")["db_version"] == "0.7.2"
+                assert client.request("/api/v1/income")["total"] == 1
+                assert client.request("/api/v1/accounts/current/1")["amount"] == 33
             with sqlite3.connect(database) as db:
                 verify_schema(db)
                 assert db.execute("SELECT password FROM pvl_users").fetchone()[0].startswith("pbkdf2-sha256$")

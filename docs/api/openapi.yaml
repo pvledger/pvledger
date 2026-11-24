@@ -1473,6 +1473,53 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
         '409': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
+  /settings/backup:
+    get:
+      summary: Download a consistent SQLite snapshot of the entire instance (administrator)
+      responses:
+        '200':
+          description: PVLedger SQLite database attachment
+          content:
+            application/vnd.sqlite3: {schema: {type: string, format: binary}}
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '413': {description: Snapshot exceeds 64 MiB}
+  /settings/restore:
+    post:
+      summary: Replace the ledger with an uploaded backup (administrator)
+      parameters:
+        - $ref: '#/components/parameters/csrf'
+      requestBody: &backupFile
+        required: true
+        description: Complete PVLedger SQLite database file up to 64 MiB, sent with a fixed Content-Length
+        content:
+          application/octet-stream: {schema: {type: string, format: binary}}
+          application/vnd.sqlite3: {schema: {type: string, format: binary}}
+      responses:
+        '204': {description: Database restored and all sessions expired}
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '413': {description: File exceeds 64 MiB}
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /setup/restore:
+    post:
+      summary: Initialize an unclaimed instance using a backup
+      security: []
+      parameters:
+        - name: X-CSRF-Token
+          in: header
+          required: true
+          description: The first-run token from the local setup form
+          schema: {type: string}
+      requestBody: *backupFile
+      responses:
+        '204': {description: Setup complete. Sign in with credentials from the backup.}
+        '403': { $ref: '#/components/responses/Error' }
+        '404': {description: Setup is closed}
+        '413': {description: File exceeds 64 MiB}
+        '415': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
   /plugins:
     get:
       summary: List registered plugins
@@ -1620,7 +1667,7 @@ paths:
               required: [dataset]
               properties:
                 dataset: {type: string, enum: [accounts/current, accounts/savings, accounts/credit, history/current, history/savings, expenses, planned-expenses, recurring-expenses, expense-categories, income, planned-income, debts, taxes, banks, countries, currencies]}
-                format: {type: string, enum: [csv, qif, ofx, qfx], default: csv}
+                format: {type: string, enum: [csv, ods, xlsx, qif, ofx, qfx], default: csv}
                 columns: {type: array, items: {type: string}, uniqueItems: true, minItems: 1}
                 filters:
                   type: object
@@ -1636,7 +1683,7 @@ paths:
   /export/download:
     post:
       summary: Download the authorized selection
-      description: CSV supports all listed datasets and column selection. QIF, OFX and QFX accept only actual expenses or income from one account and currency, with fixed columns.
+      description: CSV, ODS and XLSX support all listed datasets and column selection. QIF, OFX and QFX accept only actual expenses or income from one account and currency, with fixed columns.
       parameters:
         - $ref: '#/components/parameters/csrf'
       requestBody: *exportRequest
@@ -1645,6 +1692,8 @@ paths:
           description: A named attachment of the requested format
           content:
             text/csv: {schema: {type: string, format: binary}}
+            application/vnd.oasis.opendocument.spreadsheet: {schema: {type: string, format: binary}}
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: {schema: {type: string, format: binary}}
             application/qif: {schema: {type: string, format: binary}}
             application/x-ofx: {schema: {type: string, format: binary}}
             application/vnd.intu.qfx: {schema: {type: string, format: binary}}
@@ -1688,6 +1737,39 @@ paths:
                         currency: {type: string}
                         day: {type: integer, format: int64}
                         amount: {type: number}
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /reports/estimates:
+    get:
+      summary: Daily income, expenses and net cash flow by currency
+      description: Uses actual entries through today UTC and outstanding plans from tomorrow. Omit id_account for all authorized current accounts.
+      parameters:
+        - $ref: '#/components/parameters/account'
+        - *currencyFilter
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+      responses:
+        '200':
+          description: Up to 5,000 daily totals ordered by currency ID and UTC day
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [day, id_currency, currency, basis, income, expenses, net]
+                      properties:
+                        day: {type: integer, format: int64}
+                        id_currency: {type: integer}
+                        currency: {type: string}
+                        basis: {type: string, enum: [actual, planned]}
+                        income: {type: number}
+                        expenses: {type: number}
+                        net: {type: number}
         '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
   /reports/balances:

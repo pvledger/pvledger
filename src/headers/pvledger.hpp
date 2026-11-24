@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -15,6 +16,7 @@ namespace fs = std::filesystem;
 using Value = Json::Value;
 using Params = std::map<std::string, std::string>;
 inline constexpr char currentSchemaVersion[] = "0.7.2";
+inline constexpr int backupLimit = 64 * 1024 * 1024;
 
 struct Error : std::runtime_error {
     int status;
@@ -63,10 +65,14 @@ public:
 std::unique_ptr<Repository> openDatabase(const fs::path& path);
 bool initialized(Repository& store);
 void prepareDatabase(Repository& store, const fs::path& schema);
+std::string downloadBackup(Repository& store);
+void restoreBackup(const Config& config, const std::string& bytes, bool setup,
+                   const std::function<void(Repository&)>& finish);
 
 struct Request {
     std::string method, path, body, cookie, csrf, contentType;
     Params query;
+    bool checkRestoreAccess = false;
 };
 struct Response {
     int status;
@@ -92,7 +98,7 @@ class Application {
     unsigned loginFailures = 0;
 
     void discoverPlugins();
-    void registerPlugins();
+    void registerPlugins(Repository& db);
     Response dispatch(const Request& request);
 public:
     explicit Application(Config config);

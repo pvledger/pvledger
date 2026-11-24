@@ -4,11 +4,11 @@ Manage your finances privately
 
 PVLedger is a self-hosted ledger for personal accounts, balance history, income, expenses, debts, and taxes. The C++17 application serves its browser interface and JSON API with Oat++ and stores data locally in SQLite.
 
-Copyright (c) 2026 Vadim Prishlyak. PVLedger is licensed under the GNU Affero General Public License version 3 (AGPL-3.0-only). See [LICENSE](LICENSE) for the full text.
+Copyright (c) 2026 Vadim Prishlyak. PVLedger is available under AGPL-3.0-only or a separate commercial license. Under the AGPL, operators of a modified network service must offer its corresponding source to users who interact with it remotely. For a proprietary modification, contact Vadim Prishlyak to obtain commercial terms. [License](LICENSE) · [Commercial licensing](mailto:pvadimr@pvadimr.com)
 
 ## Build and run
 
-The supported release target is Linux x86-64. Install a C++17 compiler with static C/C++ runtimes, binutils, CMake 3.18+, Git, pkg-config, and the SQLite, OpenSSL and JsonCpp development packages. The release needs the SQLite and libcrypto static archives. CMake uses an installed JsonCpp archive or builds JsonCpp 1.9.5. Python 3.8+ runs the HTTP integration suite. CTest also exercises the browser file parsers when it finds a Chromium-based browser. CMake uses installed Oat++ 1.3.0 and yaml-cpp 0.8 if available, or fetches the pinned release tags.
+The supported release target is Linux x86-64. Install a C++17 compiler with static C/C++ runtimes, binutils, CMake 3.18+, Git, pkg-config, and the SQLite, OpenSSL and JsonCpp development packages. The release needs the SQLite and libcrypto static archives. CMake uses an installed JsonCpp archive or builds JsonCpp 1.9.5. Python 3.8+ runs the HTTP integration suite. CTest also exercises the browser file parsers when it finds a Chromium-based browser. CMake uses installed Oat++ 1.3.0 and yaml-cpp 0.8 if available, or fetches the pinned release tags. It also builds miniz 3.0.2 for spreadsheet packaging.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPVLEDGER_STATIC=ON
@@ -17,7 +17,7 @@ ctest --test-dir build --output-on-failure
 ./build/pvledger -c src/config/config.yaml
 ```
 
-Open `http://127.0.0.1:8080` to choose a language, set preferences, and create the first administrator. The example configuration creates a fresh database in `src/config/data`. To bootstrap a missing configuration, pass a new YAML filename in an existing writable directory. PVLedger uses port 8080, its distributed assets, and `data/pvledger.sqlite` relative to that directory, then writes the configuration when setup is submitted. To select a different database or port, provide a configuration file before starting. Setup listens on loopback and closes after the first administrator is created. Restart after setup to apply any non-loopback binding in an existing configuration.
+Open `http://127.0.0.1:8080` and choose **Set up a fresh instance** to set preferences and create the first administrator, or **Restore from a backup** to recover an existing ledger and its users. The example configuration creates a fresh database in `src/config/data`. To bootstrap a missing configuration, pass a new YAML filename in an existing writable directory. PVLedger uses port 8080, its distributed assets, and `data/pvledger.sqlite` relative to that directory, then writes the configuration when setup is submitted. To select a different database or port, provide a configuration file before starting. Setup listens on loopback and closes when either setup path succeeds. Restart after setup to apply any non-loopback binding in an existing configuration.
 
 The default static build verifies the final ELF has no interpreter or shared-library dependencies. Supply a static library prefix through `CMAKE_PREFIX_PATH` if needed. Use `-DPVLEDGER_STATIC=OFF` for a dynamically linked development build.
 
@@ -50,7 +50,9 @@ Open **Data → Import** to load a local CSV, QIF, OFX or QFX file. Choose the f
 
 The first import destination is actual expenses. The wizard accepts bank, cash and credit-card transaction QIF sections, and a single bank or credit-card statement in OFX 1.x SGML or OFX 2.x XML, including QFX files with those structures. A positive expense is stored in the explicitly selected currency. Source currency conflicts, unsupported splits, investment records, corrections and unrepresentable dates require review. For QIF-style two-digit years, 70–99 select 1970–1999 and 00–69 select 2000–2069. OFX timezone offsets are applied before storage. Preview flags matching account, currency, name, timestamp and amount, as well as repeated source identifiers within the file. The existing schema has no persistent external transaction ID. Confirmation posts each selected expense in the same transaction as its balance update and history. If any row fails, the entire batch rolls back.
 
-**Data → Export** offers UTF-8 CSV for accounts, histories, financial entries and reference data. Choose the filters and columns, review the count and sample, then download. Relationship columns include IDs and selectable readable labels. Dates use UTC epoch seconds in the CSV. A download holds up to 5,000 rows and 8 MiB. Larger datasets can be split with filters.
+**Data → Export** offers UTF-8 CSV, OpenDocument (.ods) and Excel (.xlsx) for accounts, histories, financial entries and reference data. Choose the filters and columns, review the count and sample, then download. Relationship columns include IDs and selectable readable labels. Dates use UTC epoch seconds. Workbooks preserve column order and store amounts as numeric cells and user-entered text as literal strings. Integers with more than 15 digits use text cells to preserve their exact value. QIF, OFX and QFX are also available for actual transactions from one account and currency. A download holds up to 5,000 rows and 8 MiB. Larger datasets can be split with filters.
+
+**Reports → Cash flow estimates** shows daily income, expenses and net cash flow across all accessible current accounts or for one selected account. Through the end of today (UTC), it counts actual entries. From tomorrow it counts outstanding planned entries (status Planned, or an unset planned-expense status). Each row identifies its basis and each currency has its own table.
 
 **Reports → Spending over time** charts daily spending and lists the same totals in a table. Select a current account, expense currency, or date range to narrow the report. Each currency has its own series. A day appears when an authorized actual expense has a recorded date and amount, using UTC day boundaries.
 
@@ -70,14 +72,18 @@ Open `http://127.0.0.1:8080/setup`. A named volume stores configuration and SQLi
 
 ## Backups and upgrades
 
-Stop PVLedger before copying its database and configuration. Alternatively, use SQLite's online backup command while the application is running.
+In **Administration → Settings**, choose **Download database backup** to save a consistent SQLite snapshot while PVLedger is running. It contains all accounts, users, password hashes, settings, plugin registrations and history. Store it privately. Keep the deployment YAML and any custom plugin, theme and language files separately.
+
+To recover, choose **Restore from a backup** in Settings or on the initial setup screen and select the SQLite file. Settings asks for confirmation before replacing the live ledger. PVLedger checks the file, supported schema, foreign keys and administrator account before committing the replacement. After success, everyone signs in again using credentials from the backup. Both browser operations support files up to 64 MiB.
+
+For larger databases, use SQLite's online backup command or stop PVLedger before copying the database.
 
 ```sh
 sqlite3 /path/to/pvledger.sqlite '.backup /path/to/pvledger.backup'
 sqlite3 /path/to/pvledger.backup 'PRAGMA integrity_check; PRAGMA foreign_key_check;'
 ```
 
-To restore, stop the application and point its configuration at a verified copy of the backup. Keep the old file until the restored instance starts and its records have been checked. Automatic upgrades create a sibling SQLite backup before changing the schema. A v0.6 database with unlinked history snapshots or a v0.7 database with populated undated income requires data reconciliation before it can be upgraded. The application refuses these upgrades and preserves the existing rows and version.
+For an offline restore, stop the application and point its configuration at a verified copy of the backup. Keep the old file until the restored instance starts and its records have been checked. Automatic upgrades create a sibling SQLite backup before changing the schema. A v0.6 database with unlinked history snapshots or a v0.7 database with populated undated income requires data reconciliation before it can be upgraded. The application refuses these upgrades and preserves the existing rows and version.
 
 The checked-in `db/pvledger.db` is a seeded v0.7 fixture. To try it, copy it to a working location and point `database.sqlite.path` at the copy. Startup backs up the file, upgrades its empty income tables, installs the v0.7.2 posting triggers, and opens setup without reapplying the seeds.
 

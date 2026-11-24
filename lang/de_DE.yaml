@@ -84,3 +84,21 @@ statuses:
   "3": Abgelehnt
 theme_default: Hell
 theme_dark: Dunkel
+commercial_license: Kommerzielle Lizenz für proprietäre Änderungen anfragen
+estimates: Cashflow-Prognose
+estimates_hint: Bis einschließlich heute (UTC) werden tatsächliche Buchungen summiert, ab morgen offene geplante Buchungen.
+estimate_income: Einnahmen
+estimate_expenses: Ausgaben
+net: Netto-Cashflow
+basis: Buchungsart
+actual: Tatsächlich
+planned: Geplant
+fresh_instance: Neue Instanz einrichten
+database_backup: Datenbanksicherung
+backup_hint: Die Sicherung enthält das gesamte Finanzbuch einschließlich Benutzern, Passwort-Hashes und Einstellungen. Bewahren Sie die Datei geschützt auf. Maximale Dateigröße 64 MiB.
+download_backup: Datenbanksicherung herunterladen
+restore_backup: Aus Sicherung wiederherstellen
+backup_file: SQLite-Sicherung von PVLedger (bis zu 64 MiB)
+setup_restore_hint: Stellen Sie Ihr Finanzbuch wieder her und melden Sie sich mit einem Konto aus der Sicherung an.
+settings_restore_hint: Die Wiederherstellung ersetzt alle Finanzdaten, Benutzer und Einstellungen und meldet alle Benutzer ab.
+confirm_restore: Diese Datenbank durch die gewählte Sicherung ersetzen?

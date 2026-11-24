@@ -7,3 +7,10 @@
   <button type="submit">{{save}}</button>
   <p role="alert" class="error" data-error></p>
 </form>
+<section>
+  <h2>{{database_backup}}</h2>
+  <p>{{backup_hint}}</p>
+  <p><a href="/api/v1/settings/backup" download>{{download_backup}}</a></p>
+  <h3>{{restore_backup}}</h3>
+  {{restore_form}}
+</section>

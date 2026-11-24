@@ -1,0 +1,7 @@
+<form id="restore-form" action="{{restore_url}}" method="post" class="form-panel"
+      data-token="{{restore_token}}" data-confirm="{{restore_confirmation}}">
+  <p>{{restore_hint}}</p>
+  <label>{{backup_file}} <input type="file" name="backup" required></label>
+  <button type="submit">{{restore_backup}}</button>
+  <p role="alert" class="error" data-error></p>
+</form>

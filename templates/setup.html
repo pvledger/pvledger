@@ -4,6 +4,12 @@
   <label>{{language}} <select name="lang">{{languages}}</select></label>
   <button type="submit">{{preview}}</button>
 </form>
+<details name="setup-mode">
+  <summary>{{restore_backup}}</summary>
+  {{restore_form}}
+</details>
+<details name="setup-mode" open>
+<summary>{{fresh_instance}}</summary>
 <form method="post" action="/setup" class="form-panel">
   <input type="hidden" name="csrf" value="{{setup_token}}">
   <fieldset>
@@ -30,3 +36,4 @@
   </details>
   <button type="submit">{{initialize}}</button>
 </form>
+</details>

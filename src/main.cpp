@@ -95,10 +95,23 @@ public:
         if (!length.empty()) {
             try {
                 const auto bytes = pvl::integer(length);
-                const int limit = request.path == "/api/v1/import/preview" ? 1024 * 1024 : 65536;
+                const bool restore = request.method == "POST" && (request.path == "/api/v1/setup/restore" ||
+                                                                 request.path == "/api/v1/settings/restore");
+                const int limit = restore ? pvl::backupLimit : request.path == "/api/v1/import/preview" ? 1024 * 1024 : 65536;
                 if (bytes > limit) return send({413, "text/plain", "Request body exceeds the limit"});
                 if (bytes < 0) return send({400, "text/plain", "Invalid Content-Length"});
-                if (bytes && request.method != "GET") request.body = standard(incoming->readBodyToString());
+                if (restore && bytes) {
+                    // Authorize before buffering a file. Recheck after upload in case setup or the session changed.
+                    request.checkRestoreAccess = true;
+                    const auto access = application.handle(request);
+                    if (access.status != 204) return send(access);
+                    request.checkRestoreAccess = false;
+                }
+                if (bytes && request.method != "GET") {
+                    request.body = standard(incoming->readBodyToString());
+                    if (request.body.size() != static_cast<std::size_t>(bytes))
+                        return send({400, "text/plain", "Incomplete request body"});
+                }
             } catch (const std::exception&) {
                 return send({400, "text/plain", "Invalid request body"});
             }

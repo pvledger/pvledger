@@ -4,7 +4,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const root = document.querySelector("#workspace");
   const login = document.querySelector("#login-form");
   const settings = document.querySelector("#settings-form");
-  if (!root && !login && !settings) return;
+  const restore = document.querySelector("#restore-form");
+  if (!root && !login && !settings && !restore) return;
 
   const csrf = document.querySelector('meta[name="csrf-token"]').content;
   const locale = document.documentElement.lang;
@@ -33,6 +34,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     catch (error) { message.textContent = error.message; }
     finally { button.disabled = false; }
   });
+  if (restore) {
+    submitted(restore, async ({backup}) => {
+      if (restore.dataset.confirm && !window.confirm(restore.dataset.confirm)) return;
+      const response = await fetch(restore.action, {
+        method: "POST", body: backup,
+        headers: {"Content-Type": "application/octet-stream", "X-CSRF-Token": restore.dataset.token}
+      });
+      if (!response.ok) {
+        if (response.headers.get("Content-Type")?.includes("application/json"))
+          throw new Error((await response.json()).error.message);
+        throw new Error(await response.text());
+      }
+      location.assign("/login");
+    });
+    if (!settings) return;
+  }
   if (login) {
     submitted(login, async (form) => {
       await request("auth/login", "POST", form, "login");

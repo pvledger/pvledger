@@ -68,7 +68,7 @@ export async function workflow(context) {
   const selectRef = async (form, key, resource, required) => {
     const control = options(await lookup(resource), tr(required ? "choose_value" : "all_values"));
     control.required = required;
-    if (key === "id_currency" && defaultCurrency != null) {
+    if (key === "id_currency" && defaultCurrency != null && route !== "reports/estimates") {
       control.value = defaultCurrency;
       if (control.selectedIndex < 0) control.selectedIndex = 0;
     }
@@ -213,27 +213,29 @@ export async function workflow(context) {
   if (route === "data/export") {
     const scope = panel("export_scope");
     const fileFormat = field(scope, "file_format", choice([
-      ["csv", "CSV · UTF-8"], ["qif", "QIF"], ["ofx", "OFX"], ["qfx", "QFX"]
+      ["csv", "CSV · UTF-8"], ["ods", "OpenDocument (.ods)"], ["xlsx", "Excel (.xlsx)"],
+      ["qif", "QIF"], ["ofx", "OFX"], ["qfx", "QFX"]
     ]));
     const dataset = field(scope, "dataset", choice(Array.from(datasets, ([id, key]) => [id, tr(key)])));
     const compatibility = node("p", tr("transaction_export_hint"));
     compatibility.hidden = true;
     scope.append(compatibility);
+    const tabular = () => ["csv", "ods", "xlsx"].includes(fileFormat.value);
     fileFormat.onchange = () => {
-      const csv = fileFormat.value === "csv";
-      compatibility.hidden = csv;
+      compatibility.hidden = tabular();
       for (const option of dataset.options)
-        option.hidden = option.disabled = !csv && !["expenses", "income"].includes(option.value);
-      if (!csv && !["expenses", "income"].includes(dataset.value)) dataset.value = "expenses";
+        option.hidden = option.disabled = !tabular() && !["expenses", "income"].includes(option.value);
+      if (dataset.selectedOptions[0]?.disabled) dataset.value = "expenses";
     };
     action(scope, "next", async () => {
       const source = dataset.value;
       const format = fileFormat.value;
-      const form = panel(format === "csv" ? "export_fields" : "export_filters");
+      const selectColumns = tabular();
+      const form = panel(selectColumns ? "export_fields" : "export_filters");
       const filters = await filterFields(form, source);
       const checks = [];
-      if (format === "csv") {
-        const initial = await request("export/preview", "POST", {dataset: source});
+      if (selectColumns) {
+        const initial = await request("export/preview", "POST", {dataset: source, format});
         const fields = node("fieldset");
         fields.append(node("legend", tr("columns")));
         for (const key of initial.columns) {
@@ -251,7 +253,7 @@ export async function workflow(context) {
       action(form, "review", async () => {
         const columns = checks.filter(([,check]) => check.checked).map(([key]) => key);
         const payload = {dataset: source, format, filters: filters()};
-        if (format === "csv") {
+        if (selectColumns) {
           if (!columns.length) throw new Error("choose_columns");
           payload.columns = columns;
         }
@@ -276,7 +278,9 @@ export async function workflow(context) {
 
   const balances = route === "reports/balances";
   const breakdown = route === "reports/expense-categories";
+  const estimates = route === "reports/estimates";
   const filters = panel("report_filters");
+  if (estimates) filters.append(node("p", tr("estimates_hint")));
   const result = node("div");
   const kind = balances ? field(filters, "account_type", choice([["current",tr("current_accounts")],["savings",tr("savings_accounts")]])) : null;
   const controls = node("div");
@@ -311,6 +315,12 @@ export async function workflow(context) {
       const title = balances ? rows[0].account + " · " + currency : currency;
       section.append(node("h2", title));
       result.append(section);
+      if (estimates) {
+        const displayRows = rows.map(row => ({...row, basis: tr(row.basis),
+          estimate_income: row.income, estimate_expenses: row.expenses}));
+        section.append(table(displayRows, ["day", "basis", "estimate_income", "estimate_expenses", "net"], route));
+        continue;
+      }
       const chart = node("canvas");
       chart.className = "chart";
       chart.setAttribute("role", "img");

@@ -1,7 +1,9 @@
 """Run the browser-native CSV, QIF and OFX parsers on local fixtures."""
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
@@ -34,7 +36,7 @@ with ThreadingHTTPServer(("127.0.0.1", 0), partial(Fixtures, directory=root)) as
                                     "--disable-background-networking", "--no-first-run", "--disable-dev-shm-usage",
                                     "--remote-debugging-port=0", "--user-data-dir=" + profile,
                                     "about:blank"],
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         try:
             port_file = Path(profile) / "DevToolsActivePort"
             for _ in range(100):
@@ -49,5 +51,13 @@ with ThreadingHTTPServer(("127.0.0.1", 0), partial(Fixtures, directory=root)) as
             assert finished.wait(20), "Browser did not report a fixture result"
             assert results == ["passed"], results
         finally:
-            browser.terminate()
-            browser.wait(timeout=10)
+            # Chromium helpers can keep writing the disposable profile after the parent exits.
+            try:
+                os.killpg(browser.pid, signal.SIGTERM)
+                browser.wait(timeout=10)
+            finally:
+                try:
+                    os.killpg(browser.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                browser.wait()

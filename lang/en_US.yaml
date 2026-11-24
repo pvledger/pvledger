@@ -99,6 +99,10 @@ statuses:
   "2": Processed with changes
   "3": Declined
 errors:
+  invalid_backup: Choose a complete PVLedger SQLite backup with a supported schema and administrator account.
+  backup_limit: The database exceeds the 64 MiB backup limit.
+  spreadsheet_text: A selected text value cannot be represented in this spreadsheet. Use CSV or adjust the selection.
+  spreadsheet_number: A selected number cannot be represented in this spreadsheet.
   invalid_balance: Enter a finite numeric account balance.
   opening_balance_required: Set the current account balance before posting an expense or income.
   posting_amount_required: Enter an amount to post this transaction.
@@ -120,7 +124,7 @@ errors:
   internal: PVLedger could not complete the request.
   preview_needed: Preview again. The review expired or the records changed.
   narrow_filters: Narrow the filters to export or chart fewer records.
-  export_format: Choose CSV, QIF, OFX, or QFX.
+  export_format: Choose CSV, ODS, XLSX, QIF, OFX or QFX.
   export_transaction_dataset: This format is available for actual expenses and actual income.
   export_fixed_columns: This format uses a fixed set of transaction fields.
   export_no_transactions: No transactions match the selected filters.
@@ -207,3 +211,21 @@ account_type: Account type
 category: Category
 share: Share
 pie_unavailable: A pie chart requires nonnegative category totals and a positive total.
+commercial_license: Request a commercial license for proprietary modifications
+estimates: Cash flow estimates
+estimates_hint: Through today (UTC), totals use actual entries. From tomorrow, they use outstanding planned entries.
+estimate_income: Income
+estimate_expenses: Expenses
+net: Net cash flow
+basis: Entry type
+actual: Actual
+planned: Planned
+fresh_instance: Set up a fresh instance
+database_backup: Database backup
+backup_hint: Download the entire ledger, including users, password hashes and settings. Store the file privately. Maximum file size is 64 MiB.
+download_backup: Download database backup
+restore_backup: Restore from a backup
+backup_file: PVLedger SQLite backup (up to 64 MiB)
+setup_restore_hint: Restore your ledger and sign in with an account from the backup.
+settings_restore_hint: Restoring replaces all ledger data, users and settings and signs everyone out.
+confirm_restore: Replace this database with the selected backup?

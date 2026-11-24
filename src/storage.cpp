@@ -1,10 +1,22 @@
 #include "pvledger.hpp"
 #include <sqlite3.h>
 #include <ctime>
+#include <fstream>
 #include <sys/stat.h>
 
 namespace pvl {
 namespace {
+struct BackupDirectory {
+    fs::path path = fs::temp_directory_path() / ("pvledger-" + token());
+    BackupDirectory() {
+        if (::mkdir(path.c_str(), 0700) != 0) throw std::runtime_error("Cannot create backup directory");
+    }
+    ~BackupDirectory() {
+        std::error_code ignored;
+        fs::remove_all(path, ignored);
+    }
+};
+
 class Sqlite final : public Repository {
     struct Close { void operator()(sqlite3* db) const { sqlite3_close(db); } };
     using Handle = std::unique_ptr<sqlite3, Close>;
@@ -92,11 +104,11 @@ public:
     void backup(const fs::path& path) {
         Sqlite destination(path);
         auto* operation = sqlite3_backup_init(destination.db.get(), "main", db.get(), "main");
-        if (!operation) throw std::runtime_error("Cannot initialize migration backup");
+        if (!operation) throw std::runtime_error("Cannot initialize SQLite backup");
         const int step = sqlite3_backup_step(operation, -1);
         const int finish = sqlite3_backup_finish(operation);
         if (step != SQLITE_DONE || finish != SQLITE_OK)
-            throw std::runtime_error("Cannot complete migration backup");
+            throw std::runtime_error("Cannot complete SQLite backup");
     }
 
     void begin() override { execute("BEGIN IMMEDIATE"); }
@@ -212,7 +224,10 @@ std::unique_ptr<Repository> openDatabase(const fs::path& path) {
 bool initialized(Repository& db) {
     return !db.query("SELECT id FROM pvl_settings LIMIT 1").empty() &&
            !db.query("SELECT id FROM pvl_users WHERE id_role=1 AND username IS NOT NULL "
-                     "AND username<>'' AND (length(password)=64 OR password LIKE 'pbkdf2-sha256$%') LIMIT 1").empty();
+                     "AND username<>'' AND typeof(password)='text' AND ("
+                     "(length(password)=64 AND password NOT GLOB '*[^0-9a-f]*') OR "
+                     "(length(password)=143 AND substr(password,1,14)='pbkdf2-sha256$' "
+                     "AND substr(password,79,1)='$' AND substr(password,80) NOT GLOB '*[^0-9a-f]*')) LIMIT 1").empty();
 }
 
 void prepareDatabase(Repository& store, const fs::path& schema) {
@@ -276,6 +291,75 @@ void prepareDatabase(Repository& store, const fs::path& schema) {
     validate(db, canonical);
     for (const auto& trigger : triggers) db.execute(trigger["sql"].asString());
     db.execute("UPDATE pvl_settings SET db_version=?", {currentSchemaVersion});
+    transaction.commit();
+}
+
+static Json::Int64 databaseBytes(Repository& db) {
+    return db.query("SELECT page_size * page_count AS bytes FROM pragma_page_size, pragma_page_count")[0]["bytes"].asInt64();
+}
+
+std::string downloadBackup(Repository& store) {
+    if (databaseBytes(store) > backupLimit) throw Error(413, "backup_limit");
+    BackupDirectory temporary;
+    const auto file = temporary.path / "ledger.sqlite";
+    dynamic_cast<Sqlite&>(store).backup(file);
+    if (fs::file_size(file) > backupLimit) throw Error(413, "backup_limit");
+    return readFile(file);
+}
+
+void restoreBackup(const Config& config, const std::string& bytes, bool setup,
+                   const std::function<void(Repository&)>& finish) {
+    if (bytes.size() > backupLimit) throw Error(413, "backup_limit");
+    if (bytes.size() < 100 || bytes.compare(0, 16, "SQLite format 3\0", 16) != 0)
+        throw Error(422, "invalid_backup");
+    BackupDirectory temporary;
+    const auto file = temporary.path / "ledger.sqlite";
+    {
+        std::ofstream output;
+        output.exceptions(std::ios::badbit | std::ios::failbit);
+        output.open(file, std::ios::binary);
+        output.write(bytes.data(), bytes.size());
+        output.close();
+    }
+    try {
+        Sqlite candidate(file);
+        candidate.execute("PRAGMA trusted_schema=OFF");
+        if (databaseBytes(candidate) != static_cast<Json::Int64>(bytes.size()) ||
+            !candidate.query("SELECT 1 FROM sqlite_schema WHERE type='view' OR sql LIKE 'CREATE VIRTUAL TABLE%' "
+                             "OR (type='trigger' AND name NOT IN ('pvl_current_balance_history',"
+                             "'pvl_savings_balance_history','pvl_post_expense','pvl_post_income')) LIMIT 1").empty() ||
+            candidate.query("PRAGMA integrity_check(1)")[0]["integrity_check"] != "ok" || !initialized(candidate))
+            throw Error(422, "invalid_backup");
+        prepareDatabase(candidate, config.assets / "db/pvledger.sql");
+    } catch (const std::runtime_error&) {
+        throw Error(422, "invalid_backup");
+    }
+
+    // Copy typed columns into the installed schema. Keep posted balances, snapshots and
+    // AUTOINCREMENT high-water marks without firing the posting rules a second time.
+    Sqlite db(config.database);
+    db.execute("PRAGMA trusted_schema=OFF");
+    db.execute("ATTACH DATABASE ? AS incoming", {file.string()});
+    Transaction transaction(db);
+    if (setup && initialized(db)) throw Error(409, "constraint");
+    db.execute("PRAGMA defer_foreign_keys=ON");
+    const auto triggers = postingTriggers(db);
+    for (const auto& trigger : triggers) db.execute("DROP TRIGGER " + qualified(trigger["name"].asString()));
+    for (const auto& definition : tables(db)) {
+        const auto name = definition["name"].asString();
+        std::string names;
+        for (const auto& column : db.query("PRAGMA main.table_info(" + qualified(name) + ")")) {
+            if (!names.empty()) names += ",";
+            names += column["name"].asString();
+        }
+        db.execute("DELETE FROM main." + name);
+        db.execute("INSERT INTO main." + name + "(" + names + ") SELECT " + names + " FROM incoming." + name);
+    }
+    db.execute("DELETE FROM main.sqlite_sequence");
+    db.execute("INSERT INTO main.sqlite_sequence(name,seq) SELECT name,seq FROM incoming.sqlite_sequence");
+    for (const auto& trigger : triggers) db.execute(trigger["sql"].asString());
+    if (!db.query("PRAGMA main.foreign_key_check").empty()) throw Error(422, "invalid_backup");
+    finish(db);
     transaction.commit();
 }
 }

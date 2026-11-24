@@ -32,6 +32,7 @@ constexpr const char* htmlType = "text/html; charset=utf-8";
 constexpr std::pair<const char*, const char*> reportPages[] = {
     {"/reports/expense-categories", "expense_breakdown"},
     {"/reports/spending", "spending_timeline"},
+    {"/reports/estimates", "estimates"},
     {"/reports/balances", "balance_timeline"}
 };
 
@@ -380,14 +381,14 @@ Application::Application(Config settings) : config(std::move(settings)), setupTo
     discoverPlugins();
     if (ready()) {
         Transaction transaction(*store);
-        registerPlugins();
+        registerPlugins(*store);
         transaction.commit();
     }
 }
 
-void Application::registerPlugins() {
+void Application::registerPlugins(Repository& db) {
     for (const auto& [id, plugin] : plugins)
-        store->execute("INSERT INTO pvl_plugins(name,path,enabled) SELECT ?,?,0 "
+        db.execute("INSERT INTO pvl_plugins(name,path,enabled) SELECT ?,?,0 "
                        "WHERE NOT EXISTS(SELECT 1 FROM pvl_plugins WHERE path=?)", {plugin.name, id, id});
 }
 
@@ -535,8 +536,35 @@ Response Application::dispatch(const Request& request) {
         }
         return std::vector<Value>{name, language, currency, theme};
     };
+    const auto restoreForm = [&](const std::string& csrf, bool firstRun) {
+        auto values = translations;
+        values["restore_token"] = csrf;
+        values["restore_url"] = firstRun ? "/api/v1/setup/restore" : "/api/v1/settings/restore";
+        values["restore_hint"] = tr(firstRun ? "setup_restore_hint" : "settings_restore_hint");
+        values["restore_confirmation"] = firstRun ? "" : tr("confirm_restore");
+        return render(readFile(config.assets / "templates/restore.html"), values);
+    };
+    const auto restore = [&]() -> Response {
+        if (!post) throw Error(405, "method");
+        if (request.contentType != "application/octet-stream" && request.contentType != "application/vnd.sqlite3")
+            throw Error(415, "invalid_input");
+        if (request.checkRestoreAccess) return {204, "text/plain", ""};
+        restoreBackup(config, request.body, !ready, [&](Repository& db) {
+            registerPlugins(db);
+            if (!ready && config.missing) config.save();
+        });
+        sessions.clear();
+        loginFailures = 0;
+        auto response = Response(204, "text/plain", "");
+        response.cookie = cookie("");
+        return response;
+    };
     if (!ready) {
         if (get && path == "/") return redirect("/setup");
+        if (path == "/api/v1/setup/restore") {
+            if (request.csrf != setupToken) throw Error(403, "csrf");
+            return restore();
+        }
         if (path != "/setup") throw Error(404, "not_found");
         if (get) {
             auto values = translations;
@@ -545,7 +573,8 @@ Response Application::dispatch(const Request& request) {
             values["database_path"] = config.database.string();
             values["port"] = std::to_string(config.port);
             return page(tr("setup"), render(setupForm, values,
-                        {{"languages", languageOptions()}, {"themes", themeOptions()}, {"currencies", currencyOptions("")}}));
+                        {{"languages", languageOptions()}, {"themes", themeOptions()}, {"currencies", currencyOptions("")},
+                         {"restore_form", restoreForm(setupToken, true)}}));
         }
         if (!post) throw Error(405, "method");
         const auto input = inputFor(request);
@@ -564,12 +593,12 @@ Response Application::dispatch(const Request& request) {
         preferencesInput.emplace_back(currentSchemaVersion);
         store->execute("INSERT INTO pvl_settings(id,instance_name,lang,default_currency,theme,db_version) "
                        "VALUES(1,?,?,?,?,?)", preferencesInput);
-        registerPlugins();
+        registerPlugins(*store);
         if (config.missing) config.save();
         transaction.commit();
         return redirect("/login");
     }
-    if (path == "/setup" || starts(path, "/setup/")) throw Error(404, "not_found");
+    if (path == "/setup" || starts(path, "/setup/") || path == "/api/v1/setup/restore") throw Error(404, "not_found");
     const auto now = Clock::now();
     for (auto it = sessions.begin(); it != sessions.end();) {
         if (it->second.expires <= now) it = sessions.erase(it);
@@ -770,6 +799,14 @@ Response Application::dispatch(const Request& request) {
         }
         throw Error(405, "method");
     }
+    if (path == "/api/v1/settings/backup" || path == "/api/v1/settings/restore") {
+        requireAdmin();
+        if (path == "/api/v1/settings/restore") return restore();
+        if (!get) throw Error(405, "method");
+        Response response(200, "application/vnd.sqlite3", downloadBackup(*store));
+        response.filename = "pvledger-backup.sqlite";
+        return response;
+    }
     if (path == "/settings" || path == "/api/v1/settings") {
         requireAdmin();
         if (get && !api) {
@@ -778,7 +815,8 @@ Response Application::dispatch(const Request& request) {
             values["current_instance"] = settings["instance_name"].asString();
             return page(tr("settings"), render(templateSource, values,
                         {{"languages", languageOptions()}, {"themes", themeOptions()},
-                         {"currencies", currencyOptions(settings["default_currency"].asString())}}), csrf);
+                         {"currencies", currencyOptions(settings["default_currency"].asString())},
+                         {"restore_form", restoreForm(csrf, false)}}), csrf);
         }
         if (get) return data(settings);
         if (request.method != "PATCH") throw Error(405, "method");

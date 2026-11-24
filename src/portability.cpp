@@ -253,7 +253,37 @@ Value lookup(Repository& db, const std::string& route, int role, Json::Int64 use
                     " ORDER BY label COLLATE NOCASE,e.id LIMIT 100 OFFSET ?", query.args);
 }
 
+static Value estimates(Repository& db, const Params& filters, int role, Json::Int64 user) {
+    std::string entries;
+    std::vector<Value> args;
+    for (const std::string name : {"income", "expenses", "planned-income", "planned-expenses"}) {
+        const bool planned = name.rfind("planned-", 0) == 0;
+        const bool income = name == "income" || name == "planned-income";
+        auto source = datasetFor(name);
+        source.statuses = false;
+        auto query = selectData(source, filters, role, user);
+        if (!entries.empty()) entries += " UNION ALL ";
+        entries += "SELECT " + source.currency + " AS id_currency,e.date," +
+                   (planned ? "'planned'" : "'actual'") + " AS basis," +
+                   (income ? "e.amount AS income,0 AS expenses" : "0 AS income,e.amount AS expenses") +
+                   query.from + query.condition + (query.condition.empty() ? " WHERE " : " AND ") +
+                   "e.amount IS NOT NULL AND e.date" + (planned ? ">=" : "<") +
+                   "CAST(strftime('%s','now','start of day','+1 day') AS INTEGER)";
+        if (planned) entries += " AND (e.status=0 OR e.status IS NULL)";
+        args.insert(args.end(), query.args.begin(), query.args.end());
+    }
+    Value result;
+    result["items"] = limitedQuery(db,
+        "WITH entries AS (" + entries + ") SELECT c.id AS id_currency,COALESCE(NULLIF(c.iso,''),c.name) AS currency,"
+        "CAST(strftime('%s',e.date,'unixepoch','start of day') AS INTEGER) AS day,e.basis,"
+        "SUM(e.income) AS income,SUM(e.expenses) AS expenses,SUM(e.income)-SUM(e.expenses) AS net"
+        " FROM entries e JOIN pvl_currencies c ON c.id=e.id_currency GROUP BY c.id,day,e.basis"
+        " HAVING day IS NOT NULL ORDER BY c.id,day", args);
+    return result;
+}
+
 Value report(Repository& db, const std::string& name, const Params& filters, int role, Json::Int64 user) {
+    if (name == "estimates") return estimates(db, filters, role, user);
     Params params = filters;
     const bool balances = name == "balances";
     const bool spending = name == "spending";
@@ -288,7 +318,8 @@ Response exportData(Repository& db, const Value& input, bool download, int role,
     require(input["dataset"].isString());
     require(!input.isMember("format") || input["format"].isString());
     const auto format = input.get("format", "csv").asString();
-    require(format == "csv" || format == "qif" || format == "ofx" || format == "qfx", "export_format");
+    const bool workbook = format == "ods" || format == "xlsx";
+    require(workbook || format == "csv" || format == "qif" || format == "ofx" || format == "qfx", "export_format");
     auto name = input["dataset"].asString();
     const auto source = datasetFor(name);
     Params params;
@@ -299,7 +330,7 @@ Response exportData(Repository& db, const Value& input, bool download, int role,
         params[key] = value.asString();
     }
     auto query = selectData(source, params, role, user);
-    if (format != "csv") {
+    if (!workbook && format != "csv") {
         require(name == "expenses" || name == "income", "export_transaction_dataset");
         require(!input.isMember("columns"), "export_fixed_columns");
         return transactionExport(db, name, source, query, format, download);
@@ -350,6 +381,9 @@ Response exportData(Repository& db, const Value& input, bool download, int role,
         return {200, "application/json; charset=utf-8", json(output)};
     }
     require(count.asInt64() <= resultLimit, "narrow_filters");
+    std::replace(name.begin(), name.end(), '/', '-');
+    auto rows = limitedQuery(db, select, query.args);
+    if (workbook) return spreadsheet(format, name, selected, rows);
     std::string csv;
     const auto append = [&](const Value& row, bool header) {
         bool first = true;
@@ -362,8 +396,7 @@ Response exportData(Repository& db, const Value& input, bool download, int role,
         require(csv.size() <= 8 * 1024 * 1024, "narrow_filters");
     };
     append({}, true);
-    for (const auto& row : limitedQuery(db, select, query.args)) append(row, false);
-    std::replace(name.begin(), name.end(), '/', '-');
+    for (const auto& row : rows) append(row, false);
     Response result(200, "text/csv; charset=utf-8", std::move(csv));
     result.filename = "pvledger-" + name + ".csv";
     return result;
