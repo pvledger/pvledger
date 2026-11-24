@@ -252,8 +252,9 @@ Value lookup(Repository& db, const std::string& route, int role, Json::Int64 use
 
 Value report(Repository& db, const std::string& name, const Params& filters, int role, Json::Int64 user) {
     Params params = filters;
-    bool balances = name == "balances";
-    if (!balances && name != "expense-categories") throw Error(404, "not_found");
+    const bool balances = name == "balances";
+    const bool spending = name == "spending";
+    if (!balances && !spending && name != "expense-categories") throw Error(404, "not_found");
     std::string dataset = "expenses";
     if (balances) {
         const auto kind = params.extract("account_type");
@@ -263,13 +264,18 @@ Value report(Repository& db, const std::string& name, const Params& filters, int
     const auto source = datasetFor(dataset);
     const auto query = selectData(source, params, role, user);
     std::string sql = "SELECT c.id AS id_currency,COALESCE(NULLIF(c.iso,''),c.name) AS currency,";
-    if (balances) sql += "e.id,e.date,e.amount,a.id AS id_account,a.name AS account";
-    else sql += "category.id AS id_category,category.name AS category,SUM(e.amount) AS amount";
-    sql += query.from + " JOIN pvl_currencies c ON c.id=" + source.currency;
-    if (!balances) sql += " JOIN pvl_expenses_categories category ON category.id=e.id_category";
-    sql += query.condition;
-    if (balances) sql += " ORDER BY c.id,a.id,e.date,e.id";
-    else sql += " GROUP BY c.id,category.id HAVING COUNT(e.amount)>0 ORDER BY c.id,amount DESC,category.id";
+    const auto from = query.from + " JOIN pvl_currencies c ON c.id=" + source.currency;
+    if (balances) {
+        sql += "e.id,e.date,e.amount,a.id AS id_account,a.name AS account" + from + query.condition +
+               " ORDER BY c.id,a.id,e.date,e.id";
+    } else if (spending) {
+        sql += "CAST(strftime('%s',e.date,'unixepoch','start of day') AS INTEGER) AS day,SUM(e.amount) AS amount" +
+               from + query.condition + " GROUP BY c.id,day HAVING day IS NOT NULL AND COUNT(e.amount)>0 ORDER BY c.id,day";
+    } else {
+        sql += "category.id AS id_category,category.name AS category,SUM(e.amount) AS amount" + from +
+               " JOIN pvl_expenses_categories category ON category.id=e.id_category" + query.condition +
+               " GROUP BY c.id,category.id HAVING COUNT(e.amount)>0 ORDER BY c.id,amount DESC,category.id";
+    }
     Value result;
     result["items"] = limitedQuery(db, sql, query.args);
     return result;

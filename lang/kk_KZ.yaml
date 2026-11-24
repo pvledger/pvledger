@@ -27,6 +27,11 @@ users: Пайдаланушылар
 roles: Рөлдер
 plugins: Кеңейтімдер
 about: PVLedger туралы
+system_info: Жүйе туралы ақпарат
+operating_system: Операциялық жүйе
+architecture: Процессор архитектурасы
+sqlite_version: SQLite нұсқасы
+schema_version: Дерекқор схемасының нұсқасы
 settings: Баптаулар
 login: Кіру
 logout: Шығу
@@ -57,6 +62,8 @@ previous: Алдыңғы
 filter: Сүзгілерді қолдану
 reports: Есептер
 expense_breakdown: Санат бойынша шығыстар
+spending_timeline: Күндер бойынша шығыстар
+day: Күн (UTC)
 balance_timeline: Шот қалдығының тарихы
 data_tools: Деректер
 import_file: Импорттау

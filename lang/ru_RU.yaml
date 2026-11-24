@@ -27,6 +27,11 @@ users: Пользователи
 roles: Роли
 plugins: Расширения
 about: О приложении
+system_info: Сведения о системе
+operating_system: Операционная система
+architecture: Архитектура процессора
+sqlite_version: Версия SQLite
+schema_version: Версия схемы базы данных
 settings: Настройки
 login: Войти
 logout: Выйти
@@ -57,6 +62,8 @@ previous: Назад
 filter: Применить фильтры
 reports: Отчёты
 expense_breakdown: Расходы по категориям
+spending_timeline: Расходы по дням
+day: День (UTC)
 balance_timeline: История баланса
 data_tools: Данные
 import_file: Импорт

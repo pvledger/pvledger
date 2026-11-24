@@ -1,13 +1,14 @@
 # PVLedger — Web Application Specification
 
-**Document version:** Draft v0.7  
+**Document version:** Draft v0.8\
 **Date:** 2026-11-24  
 **Product:** PVLedger  
-**Slogan (as supplied):** “Manager your personal assets with privacy”  
+**Application release:** 0.1.1\
+**Slogan:** “Manage your finances privately”\
 **Document status:** Working draft — requirements and proposed architecture; not a final implementation contract  
 **Database reference:** `pvledger_database_spec(3).md` — *PVLedger Database Specification, Draft v0.7.1* (derived by that specification from `pvledger(7).sql`; adds `date INTEGER NOT NULL` to both new income tables)  
 **Target release:** v1 (SQLite-first)  
-**Scope of this revision:** Carry forward v0.6 requirements and database spec v0.7.1 (20 tables/119 columns). Add actual and planned income editing, calendar and status controls, database-backed currency defaults, a dark theme, and QIF/OFX/QFX exports. This revision authorizes no database schema changes.
+**Scope of this revision:** PVLedger 0.1.1 updates the slogan and About page and adds daily spending reports using the existing v0.7.1 database schema.
 
 > **Reading guide:** **Required** means supplied by the project owner or established in the attached database specification. **Proposed** is a starting implementation choice that may be changed. **Later** means explicitly deferred or not yet specified. The database specification and its source SQL govern the *existing* schema; this document must not be read as permission to modify it silently.
 
@@ -44,7 +45,7 @@ PVLedger is licensed under the GNU Affero General Public License version 3 (AGPL
 - **Export:** User-initiated, authorized extraction of selected records into a downloadable file.
 - **Report:** A filtered, read-only representation of persisted financial records, shown as charts and accessible tables.
 
-**Outside v1 unless separately approved:** bank synchronization, online accounts/cloud services, investment portfolios, market-rate currency conversion, attachments, payment initiation, and automatic tax filing. The word *assets* in the product name/slogan does not imply that the current database already models real estate, vehicles, or securities.
+**Outside v1 unless separately approved:** bank synchronization, online accounts/cloud services, investment portfolios, market-rate currency conversion, attachments, payment initiation, and automatic tax filing.
 
 ### 1.3 Release strategy
 
@@ -151,6 +152,9 @@ PVLedger is licensed under the GNU Affero General Public License version 3 (AGPL
 | APP-054 | Initialize currency selectors from `pvl_settings.default_currency` when creating records, mapping imports or opening currency filters. Preserve stored currency when editing records | Required by owner, v0.7 | Must |
 | APP-055 | Supply a selectable dark theme alongside the light theme | Required by owner, v0.7 | Must |
 | APP-056 | Add QIF, OFX and QFX transaction downloads to the Export Wizard alongside CSV | Required by owner, v0.7 | Must |
+| APP-057 | Display “Manage your finances privately” during setup and on the About page. Show application version 0.1.1 on About, in the CLI and in the version API | Required by owner, v0.8 | Must |
+| APP-058 | Show system information on About and open its contact, source and license links in a new tab or window | Required by owner, v0.8 | Must |
+| APP-059 | Add Spending over time under Reports, with UTC daily totals of actual expenses by currency, a chart and a matching table | Required by owner, v0.8 | Must |
 
 ### 3.1 Main UI pages and modules
 
@@ -165,12 +169,12 @@ PVLedger is licensed under the GNU Affero General Public License version 3 (AGPL
 | Administration | Users, roles, plugins, instance settings | `pvl_users`, `pvl_user_roles`, `pvl_plugins`, `pvl_settings` |
 | Data import | Import wizard; upload file, select format, map fields/accounts, preview, validate, confirm and review results | File input → explicit mappings to existing tables; no new import table required |
 | Data export | Export wizard; choose dataset, format, filters, fields and download | Read-only extraction from authorized existing tables |
-| Reports | Pie charts for categories and other valid breakdowns; balance-vs-time line charts; date/account/currency filters and accessible data tables | Aggregates of existing finance tables; current/savings histories for time series |
+| Reports | Category breakdowns, daily spending and balance history charts with date, account and currency filters and accessible tables | Actual expenses and recorded current/savings balance histories |
 | System | Login, first-run setup, help/about, error pages | Application services |
 
-The About page retains the application name, slogan, and version. It displays `(c) 2026 Vadim Prishlyak`, the email address `pvadimr@pvadimr.com` as a `mailto:` link, the source repository URL `https://forge.pvadimr.com/pvledger/pvledger` as an HTTPS link, and the license name GNU Affero General Public License v3.0 (AGPL-3.0-only) linked to the GNU license text.
+The About page retains the application name, slogan, and version. It displays `(c) 2026 Vadim Prishlyak`, the email address `pvadimr@pvadimr.com` as a `mailto:` link, the source repository URL `https://forge.pvadimr.com/pvledger/pvledger` as an HTTPS link, and the license name GNU Affero General Public License v3.0 (AGPL-3.0-only) linked to the GNU license text. Each of these three links requests a new browser tab or window. The browser or operating system handles the email link using the configured mail application. A System information section lists the server OS and kernel release, CPU architecture, running SQLite library version and database schema version from `pvl_settings.db_version`.
 
-**Required navigation placement:** a **vertical sidebar on the left** on desktop/tablet layouts. **Proposed menu order:** Dashboard · Accounts (Current / Savings / Credit; Balance History on Current/Savings account detail) · Income (Actual / Planned) · Expenses (Actual / Planned / Recurring / Categories) · Debts · Taxes · Banks · **Reports** (Expense Breakdown / Income Overview / Balance History) · **Data** (Import / Export) · Administration (Users / Plugins / Settings) · Reference Data (Countries / Currencies) · About. Child items should expand beneath the parent item. On narrow screens, preserve the menu as a left-origin sliding drawer opened by an accessible menu control; do not change it to a top horizontal desktop menu.
+**Required navigation placement:** a **vertical sidebar on the left** on desktop/tablet layouts. **Proposed menu order:** Dashboard · Accounts (Current / Savings / Credit; Balance History on Current/Savings account detail) · Income (Actual / Planned) · Expenses (Actual / Planned / Recurring / Categories) · Debts · Taxes · Banks · **Reports** (Expense Breakdown / Spending over time / Income Overview / Balance History) · **Data** (Import / Export) · Administration (Users / Plugins / Settings) · Reference Data (Countries / Currencies) · About. Child items should expand beneath the parent item. On narrow screens, preserve the menu as a left-origin sliding drawer opened by an accessible menu control; do not change it to a top horizontal desktop menu.
 
 **CRUD behavior:** All forms validate required relationships, show readable errors, and prevent deletion of records that are still referenced by foreign keys. Reference seeds must not be reset on application restarts. A Viewer can see only authorized records; menu hiding is cosmetic, not a security boundary.
 
@@ -291,19 +295,20 @@ The database adds **two** income tables in v0.7, then v0.7.1 makes their respect
 
 **Workflow:** Choose format and dataset, set filters and CSV columns, preview, then download. Exports must respect backend authorization, protect passwords/secrets, escape CSV spreadsheet-formula risks, use predictable filenames and UTF-8 where possible, stream larger files with resource limits, and clearly state which fields/formats cannot be represented. File generation must not change balances or other financial data.
 
-### 3.8 Reports and charts (v0.5)
+### 3.8 Reports and charts
 
-**Required:** Include a left-sidebar **Reports** section supporting **pie charts** and **balances versus time** charts, with filtering and clear labels. Reports are read-only; access is checked server-side for every chart and its data endpoint.
+**Required:** Include a left-sidebar **Reports** section supporting category **pie charts**, **Spending over time** and **balance history**, with filtering and clear labels. Reports are read-only; access is checked server-side for every chart and its data endpoint.
 
 | Report | Suggested visualization | Source/accuracy rule |
 |---|---|---|
 | Expense distribution by category | Pie chart with amounts and percentages, plus accessible table | `pvl_expenses` grouped by `pvl_expenses_categories`, respecting account/currency/date filtering |
+| Spending over time | Daily line chart with points and a Day (UTC) / Amount table per currency | Sum recorded amounts from actual `pvl_expenses` by UTC calendar day and expense currency. Apply account access and inclusive date filters to individual expenses before grouping. Preserve signed amounts and omit rows without a usable date or amount. Show only days with qualifying records, in chronological order. |
 | Expense distribution by account | Pie chart with legend and table | Actual `pvl_expenses` grouped by linked current account; one currency at a time |
 | Income versus expenses over a period | Time series or grouped bars (proposed) | Actual `pvl_income` and `pvl_expenses` only; income status treatment awaits approved rules |
 | Current account balance history | Balance vs. time **line chart** with points | Actual snapshots from `pvl_account_history_current.date/amount` |
 | Savings account balance history | Balance vs. time **line chart** with points | Actual snapshots from `pvl_account_history_savings.date/amount` |
 
-**Required interpretation:** Time-series plots use recorded Unix-second timestamps, displayed in the chosen UI locale/timezone; they do **not** synthesize daily balances between snapshots. Credit accounts have no balance-history table. Histories may contain multiple records at one timestamp; graph behavior for equal timestamps should be documented rather than treated as a database uniqueness guarantee. Do not merge values in different currencies without an approved exchange-rate model, and do not represent planned income as received income or planned expenses as actual spending.
+**Required interpretation:** Balance histories use recorded Unix-second timestamps, displayed in the chosen UI locale; they do **not** synthesize daily balances between snapshots. Credit accounts have no balance-history table. Histories may contain multiple records at one timestamp; graph behavior for equal timestamps should be documented rather than treated as a database uniqueness guarantee. Do not merge values in different currencies without an approved exchange-rate model, and do not represent planned income as received income or planned expenses as actual spending.
 
 **Proposed UI:** Chart type and filter controls, account/currency selector populated through §3.5, configurable date range, readable legends/units, a no-data state and a synchronized accessible tabular view. Chart calculations should be testable independently of the JavaScript chart renderer. Financial reports may also be downloadable through the Export Wizard; that is a proposed integration, not a new database requirement.
 
@@ -465,7 +470,7 @@ meta:
   direction: ltr
 app:
   name: PVLedger
-  slogan: "Manager your personal assets with privacy"
+  slogan: "Manage your finances privately"
 menu:
   dashboard: Dashboard
   accounts: Accounts
@@ -477,6 +482,7 @@ menu:
   planned_income: Planned income
   reports: Reports
   expense_breakdown: Expense breakdown
+  spending_timeline: Spending over time
   balance_trends: Balance history
   data: Data
   import: Import
@@ -689,7 +695,7 @@ The browser UI should use a versioned, same-origin API prefix `/api/v1`. This is
 | Reference lookup values | `GET /api/v1/lookups/{resource}` (or existing authorized list endpoints) | Resolve `{id,label}` options from the correct referenced table, including user displayname/username fallback |
 | Import | `POST /api/v1/import/preview`, `POST /api/v1/import/commit` (proposed) | Parse CSV/QIF/OFX/QFX; map records, preview warnings, confirm validated writes |
 | Export | `POST /api/v1/export/preview`, `POST /api/v1/export/download` (proposed) | Authorized dataset, filters and file download in CSV, QIF, OFX or QFX |
-| Reports | `GET /api/v1/reports/expense-categories`, `GET /api/v1/reports/balances` (proposed) | Filtered pie/time-series datasets; scoped by account, currency and dates |
+| Reports | `GET /api/v1/reports/expense-categories`, `GET /api/v1/reports/spending`, `GET /api/v1/reports/balances` | Category totals, daily spending totals and balance snapshots scoped by account, currency and dates |
 | Settings | `GET/PATCH /api/v1/settings` | Admin preference changes |
 | Plugins | `/api/v1/plugins`, `POST /api/v1/plugins/{id}/enable` | Admin management and plugin state |
 | UI support | `GET /api/v1/ui/menu`, `GET /api/v1/i18n/{locale}` | Navigation / client translation data |
@@ -938,7 +944,7 @@ The exact service configuration, image base, volume mappings, listening address,
 - CSV, QIF and OFX/QFX test fixtures (including encodings, malformed input, duplicated transactions, sign conventions and unusual dates) preview correctly; unrecognized records/errors cannot be silently committed.
 - Import requires user-approved account/field mapping and confirmation, honors account permissions, and does not change live balances/history or invent required income status values.
 - Export Wizard returns authorized data in correctly escaped CSV or fixed-field QIF/OFX/QFX transactions. Verify preview counts, signed amounts, dates, attachment types and filenames, text escaping, and errors for incompatible datasets or mixed account/currency selections.
-- Reports render pie breakdowns and current/savings balance-versus-time charts from verified records; empty/duplicate-timestamp datasets have defined display behavior, mixed currencies are separated, and chart data equals its accessible table values.
+- Reports render category breakdowns, daily spending totals and current/savings balance histories from recorded values; empty/duplicate-timestamp datasets have defined display behavior, mixed currencies are separated, and chart data equals its accessible table values.
 - CLI help/version exit without loading the DB; invalid `-c` path shows actionable error.
 - SQLite first-run wizard creates schema, exactly one settings row, correct reference counts and first administrator.
 - Restart preserves data, selected language, theme, currency and instance name without rerunning seeds.
@@ -971,7 +977,7 @@ The exact service configuration, image base, volume mappings, listening address,
 | **M2 — Localization & wizard** | YAML locale loader, setup UI, first admin, persisted locale/instance/theme/currency | End-to-end first-run works in at least one completed locale |
 | **M3 — Security & base UI** | Login/logout, sessions, roles, templating, **left vertical JS menu**, themes, shared database reference selectors | Role enforcement and lookup label/ID behavior validated on pages and API |
 | **M4 — Financial modules** | CRUD/forms for banks, accounts, expenses, categories, planned/recurring, debts and taxes; actual/planned income CRUD and status-aware forms; dated balance history display for current/savings and an approved snapshot-entry workflow | Data validation, income required fields and dates, historical balance semantics and FK behaviors tested |
-| **M5 — Import/export and reports** | CSV/QIF/OFX/QFX import preview/commit, CSV/QIF/OFX/QFX export wizard, Reports menu with category pie charts and account balance timelines | Format fixtures, permissions, time-series accuracy and safe export tests pass |
+| **M5 — Import/export and reports** | CSV/QIF/OFX/QFX import preview/commit, CSV/QIF/OFX/QFX export wizard, Reports menu with category pie charts, daily spending and account balance timelines | Format fixtures, permissions, time-series accuracy and safe export tests pass |
 | **M6 — Plugins & stabilization** | Plugin registry/loader compatible with static core strategy, safe defaults, documentation, backup/restore guidance, regression tests | Plugin enable/disable, static binary and upgrade tests pass |
 | **M7 — Future databases** | PostgreSQL support, then MariaDB/MySQL adapters and migrations | Each backend passes common integration suite |
 
@@ -998,7 +1004,7 @@ These are **not** settled by the attached database contract or the original appl
 13. **MariaDB/MySQL integration:** Choose adapter/library, SQL dialect conventions, testing strategy and deployment support.
 14. **Plugin compatibility:** Stable API/ABI, signing/distribution policy, plugin permission model and restart requirements.
 15. **Settings details:** Should blank `instance_name` be `NULL` or `''`? Define valid `db_version` format.
-16. **Brand copy:** Supplied slogan is **“Manager your personal assets with privacy”**. Confirm whether intended wording is **“Manage your personal assets with privacy”** before changing UI copy.
+16. **Future reports:** Choose a chart library and any additional metrics. Define timestamp and duplicate plotting policies for future charts and how statuses affect actual-income charts.
 17. **Data portability details:** Import/export wizards are now required. Define exact mapping templates, supported QIF/OFX variants, initial importable datasets, fidelity expectations, and whether UI backups or cross-engine migration are also needed.
 18. **Scope of “assets”:** Whether to add non-bank assets (property, investments, vehicles, cash) after v1; not modeled today.
 19. **Snapshot creation:** Should balances be captured manually, at day-end, periodically or on balance changes? Define time zone/day boundary and timestamp choice.
@@ -1016,7 +1022,6 @@ These are **not** settled by the attached database contract or the original appl
 31. **Plugin loading versus static core:** Choose dynamic extension exception, built-in modules, or out-of-process plugin contract; define ABI/runtime compatibility and isolation.
 32. **Import semantics:** Decide which existing table(s) each supported source format may populate and how to handle OFX/QFX variants, duplicate identifiers, signed amounts, multi-currency data and income status fields.
 33. **Export compatibility:** Identify target financial applications for compatibility testing beyond the supported transaction export fields.
-34. **Reports:** Choose chart library, approved available report metrics, timestamp/duplicate plotting policy, and how statuses affect actual-income charts.
 
 ---
 
@@ -1024,7 +1029,7 @@ These are **not** settled by the attached database contract or the original appl
 
 A first usable release is ready for review when all of the following are demonstrated:
 
-- [ ] The root and packaged installations include the AGPL v3 license text. The About page displays the copyright and links to the contact email, source repository, and license text.
+- [ ] The root and packaged installations include the AGPL v3 license text. The About page displays the slogan, application version, copyright and server system information. Its contact email, source repository and license links open in a new tab or window according to browser and mail-handler preferences.
 - [ ] The CMake output/installed executable is named **`pvledger`** (no remaining `vpledger` command) and `pvledger --help` / `pvledger --version` work without an initialized DB.
 - [ ] `pvledger -c <config-path>` starts a local Oat++ web server or launches secure first-run setup.
 - [ ] Valid YAML config controls SQLite path, port, language path, plugins path and themes path.
@@ -1036,7 +1041,7 @@ A first usable release is ready for review when all of the following are demonst
 - [ ] Forms with database relationships automatically list valid referenced records, displaying name/displayname/username as appropriate; values submitted/stored are FK IDs and the server independently enforces permissions.
 - [ ] Import Wizard accepts CSV, QIF and OFX/QFX, performs mapping/preview/duplicate review/validation before explicit commit and reports row-level outcomes without unapproved balance changes.
 - [ ] Export Wizard downloads authorized records in CSV or actual transactions in QIF, OFX and QFX for a single account and currency.
-- [ ] Reports includes pie charts and current/savings balance-versus-time charts driven by real persisted values, with currency-aware filters and tabular accessibility alternatives.
+- [ ] Reports includes category pie charts, Spending over time and current/savings balance history. Daily spending points equal the table totals for authorized actual expenses in the selected account, currency and UTC date range.
 - [ ] Financial forms use date pickers, default new currency selectors to `pvl_settings.default_currency`, and show the four named statuses where applicable. Light and Dark are selectable instance themes.
 - [ ] Actual and planned income can be added, edited and deleted by authorized users and listed by account, date or status. Forms and API enforce the required fields. Income edits do not change account balances or history.
 - [ ] Current/savings account details can display historical absolute balances from their respective new history tables, with correct currency and timestamps; required history `id_account`, `date` and `amount` are validated.
@@ -1077,3 +1082,4 @@ A first usable release is ready for review when all of the following are demonst
 | v0.5 | 2026-11-23 | Corrected binary name to `pvledger`; required statically linked core build, vertical left sidebar, database-driven FK selectors, CSV/QIF/OFX/QFX import wizard, export wizard and chart reports; updated architecture, UI, API, milestones, tests, security and acceptance criteria without schema changes. |
 | v0.6 | 2026-11-24 | Added AGPL-3.0-only licensing, license packaging, and About page attribution and links. |
 | v0.7 | 2026-11-24 | Added actual and planned income CRUD, date pickers, default currency selection, dark theme, QIF/OFX/QFX export, and named status selectors. |
+| v0.8 | 2026-11-24 | Specified the PVLedger 0.1.1 slogan, About system information and link behavior, and daily Spending over time report. |

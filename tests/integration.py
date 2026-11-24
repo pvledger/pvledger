@@ -6,6 +6,7 @@ import io
 import hashlib
 import http.client
 import json
+import platform
 import re
 import shutil
 from pathlib import Path
@@ -190,6 +191,21 @@ def data_workflows(client, account, savings):
     assert client.request(api + f"accounts/current/{account}")["amount"] == 500.5
     assert client.request(api + f"accounts/current/{account}/history")["total"] == 2
 
+    expense = {"id_account": account, "id_currency": 1, "id_category": category, "name": "Daily expense"}
+    for date, amount in [(-1, 8), (0, 2.5), (3600, -2.5), (86400, None), (None, 10)]:
+        client.request(api + "expenses", 201, "POST", {**expense, "date": date, "amount": amount})
+    client.request(api + "planned-expenses", 201, "POST",
+                   {"id_account": account, "id_currency": 1, "name": "Planned", "amount": 90, "date": 0, "status": 0})
+    spending = api + "reports/spending"
+    rows = client.request(spending)["items"]
+    assert [(r["currency"], r["day"], r["amount"]) for r in rows] == [
+        ("AED", -86400, 8), ("AED", 0, 0), ("AED", 1699920000, 25), ("AFN", 1699920000, 7)]
+    assert client.request(spending + f"?id_currency=1&id_account={account}&from=3600&to=3600")["items"] == [
+        {"id_currency": 1, "currency": "AED", "day": 0, "amount": -2.5}]
+    assert client.request(spending + "?id_currency=2")["items"] == rows[-1:]
+    assert client.request(spending + "?id_account=99999")["items"] == []
+    client.request(spending + "?from=1&to=0", 422)
+
 
 def exercise(directory):
     path, port = config(directory)
@@ -201,6 +217,7 @@ def exercise(directory):
                               ("de_DE", "Ersteinrichtung")]:
             assert title in client.request("/setup?lang=" + locale)
         page = client.request("/setup")
+        assert "Manage your finances privately" in page
         setup_token = re.search(r'name="csrf" value="([a-f0-9]{64})"', page)[1]
         fields = {"lang": "en_US", "theme": "default", "default_currency": "1",
                   "username": "admin", "password": PASSWORD, "instance_name": "<Local & private>"}
@@ -208,20 +225,32 @@ def exercise(directory):
         fields["csrf"] = setup_token
         client.request("/setup", 303, "POST", fields, form=True)
         client.request("/api/v1/income", 401)
+        client.request("/api/v1/reports/spending", 401)
         client.request("/setup", 404)
         client.request("/api/v1/auth/login", 403, "POST", {"username": "admin", "password": PASSWORD})
         client.login("admin")
         assert "&lt;Local &amp; private&gt;" in client.request("/")
         about = client.request("/about")
+        version = client.request("/api/v1/system/version")["version"]
+        assert subprocess.check_output([BINARY, "--version"], text=True).strip() == "PVLedger " + version
+        assert f"<p>{version}</p>" in about and "Manage your finances privately" in about
         assert "(c) 2026 Vadim Prishlyak" in about
-        assert '<a href="mailto:pvadimr@pvadimr.com">pvadimr@pvadimr.com</a>' in about
+        new_tab = 'target="_blank" rel="noopener noreferrer"'
+        assert f'<a href="mailto:pvadimr@pvadimr.com" {new_tab}>pvadimr@pvadimr.com</a>' in about
         source_url = "https://forge.pvadimr.com/pvledger/pvledger"
-        assert f'<a href="{source_url}">{source_url}</a>' in about
-        assert ('<a href="https://www.gnu.org/licenses/agpl-3.0.html">'
+        assert f'<a href="{source_url}" {new_tab}>{source_url}</a>' in about
+        assert (f'<a href="https://www.gnu.org/licenses/agpl-3.0.html" {new_tab}>'
                 'GNU Affero General Public License v3.0 (AGPL-3.0-only)</a>') in about
+        assert "<h2>System information</h2>" in about
+        assert f"<dd>{platform.system()} {platform.release()}</dd>" in about
+        assert f"<dd>{platform.machine()}</dd>" in about
+        assert re.search(r"<dt>SQLite version</dt><dd>\d+\.\d+\.\d+", about)
+        assert "<dt>Database schema version</dt><dd>0.7.1</dd>" in about
         assert client.request("/assets/js/app.js").startswith('"use strict"')
         api = "/api/v1/"
-        assert len(client.request(api + "ui/menu")) > 10
+        menu = client.request(api + "ui/menu")
+        assert len(menu) > 10 and {"href": "/reports/spending", "label": "Spending over time", "group": "Reports"} in menu
+        assert 'data-route="reports/spending"' in client.request("/reports/spending")
         assert client.request(api + "i18n/de_DE")["dashboard"] == "Übersicht"
         assert client.request(api + "dashboard")["current_accounts"] == []
         assert "password" not in client.request(api + "users/1")
@@ -300,6 +329,7 @@ def exercise(directory):
         assert client.request(api + "lookups/users") == [{"id": 3, "label": "viewer"}]
         assert client.request(api + "reports/balances")["items"] == []
         assert client.request(api + "reports/expense-categories")["items"] == []
+        assert client.request(api + f"reports/spending?id_account={account}")["items"] == []
         assert client.request(api + "export/preview", method="POST", payload={"dataset": "income"})["total"] == 0
         client.request(api + "import/preview", 403, "POST", {})
         client.request("/data/import", 403)

@@ -89,13 +89,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   const dateInput = () => Object.assign(node("input"), {type: "date", min: "0001-01-01", max: "9999-12-31"});
   const unixTime = (input, end = false) => input.valueAsNumber / 1000 + (end ? 86399 : 0);
   const referenceLabels = new Map();
+  const dayFormat = new Intl.DateTimeFormat(locale, {dateStyle: "medium", timeZone: "UTC"});
+  const timestampFormat = new Intl.DateTimeFormat(locale, {dateStyle: "medium", timeStyle: "medium", timeZone: "UTC"});
   const format = (key, value, route) => {
     if (value === null || value === undefined) return "—";
     if (referenceLabels.has(key)) return referenceLabels.get(key).get(String(value)) ?? "—";
-    if ((key === "date" || key === "billing_date") && Number.isSafeInteger(value) &&
+    if ((key === "day" || key === "date" || key === "billing_date") && Number.isSafeInteger(value) &&
         Math.abs(value) <= 8640000000000) {
-      return new Intl.DateTimeFormat(locale, {dateStyle: "medium", timeStyle: "medium", timeZone: "UTC"})
-        .format(new Date(value * 1000)) + " UTC";
+      const date = new Date(value * 1000);
+      return key === "day" ? dayFormat.format(date) : timestampFormat.format(date) + " UTC";
     }
     if (key === "status" && Number.isInteger(value) && value >= 0 && value <= 3)
       return tr("statuses." + value);

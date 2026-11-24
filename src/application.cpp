@@ -5,6 +5,7 @@
 #include <ctime>
 #include <iostream>
 #include <sstream>
+#include <sys/utsname.h>
 
 namespace pvl {
 const std::vector<Resource> resources = {
@@ -28,6 +29,11 @@ const std::vector<Resource> resources = {
 namespace {
 constexpr const char* apiPrefix = "/api/v1";
 constexpr const char* htmlType = "text/html; charset=utf-8";
+constexpr std::pair<const char*, const char*> reportPages[] = {
+    {"/reports/expense-categories", "expense_breakdown"},
+    {"/reports/spending", "spending_timeline"},
+    {"/reports/balances", "balance_timeline"}
+};
 
 bool starts(const std::string& value, const std::string& prefix) {
     return value.compare(0, prefix.size(), prefix) == 0;
@@ -679,8 +685,7 @@ Response Application::dispatch(const Request& request) {
             else if (route == "users" || route == "roles") group = tr("administration");
             add("/" + route, tr(resource.label), group);
         }
-        add("/reports/expense-categories", tr("expense_breakdown"), tr("reports"));
-        add("/reports/balances", tr("balance_timeline"), tr("reports"));
+        for (const auto& [route, label] : reportPages) add(route, tr(label), tr("reports"));
         if (role != 3) add("/data/import", tr("import_file"), tr("data_tools"));
         add("/data/export", tr("export_file"), tr("data_tools"));
         if (role == 1) {
@@ -702,8 +707,11 @@ Response Application::dispatch(const Request& request) {
         if (importing && role == 3) throw Error(403, "forbidden");
         return shell(tr(importing ? "import_file" : "export_file"), path.substr(1));
     }
-    if (get && (path == "/reports/expense-categories" || path == "/reports/balances"))
-        return shell(tr(path == "/reports/balances" ? "balance_timeline" : "expense_breakdown"), path.substr(1));
+    if (get && starts(path, "/reports/")) {
+        for (const auto& [route, label] : reportPages)
+            if (path == route) return shell(tr(label), path.substr(1));
+        throw Error(404, "not_found");
+    }
     if (get && starts(path, "/api/v1/reports/"))
         return data(report(*store, path.substr(16), request.query, role, user));
     if (post && (path == "/api/v1/export/preview" || path == "/api/v1/export/download"))
@@ -724,15 +732,17 @@ Response Application::dispatch(const Request& request) {
         job.preview = {};
         return data(result);
     }
-    if (get && path == "/about")
-        return page(tr("about"), "<h1>PVLedger</h1><p>" + escape(tr("slogan")) +
-                    "</p><p>" PVL_VERSION "</p>"
-                    "<p>(c) 2026 Vadim Prishlyak</p>"
-                    "<p><a href=\"mailto:pvadimr@pvadimr.com\">pvadimr@pvadimr.com</a></p>"
-                    "<p><a href=\"https://forge.pvadimr.com/pvledger/pvledger\">"
-                    "https://forge.pvadimr.com/pvledger/pvledger</a></p>"
-                    "<p><a href=\"https://www.gnu.org/licenses/agpl-3.0.html\">"
-                    "GNU Affero General Public License v3.0 (AGPL-3.0-only)</a></p>", csrf);
+    if (get && path == "/about") {
+        auto values = translations;
+        struct utsname system{};
+        const bool hasSystem = uname(&system) == 0;
+        values["server_os"] = hasSystem ? std::string(system.sysname) + " " + system.release : "—";
+        values["server_architecture"] = hasSystem ? system.machine : "—";
+        values["sqlite_runtime"] = single(store->query("SELECT sqlite_version() AS version"))["version"].asString();
+        values["db_schema"] = settings["db_version"].asString();
+        values["app_version"] = PVL_VERSION;
+        return page(tr("about"), render(readFile(config.assets / "templates/about.html"), values), csrf);
+    }
     if (get && starts(path, "/plugins/")) {
         const auto id = path.substr(9);
         const auto plugin = plugins.find(id);

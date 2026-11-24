@@ -1,5 +1,7 @@
 # PVLedger
 
+Manage your finances privately
+
 PVLedger is a self-hosted ledger for personal accounts, balance history, income, expenses, debts, and taxes. The C++17 application serves its browser interface and JSON API with Oat++ and stores data locally in SQLite.
 
 Copyright (c) 2026 Vadim Prishlyak. PVLedger is licensed under the GNU Affero General Public License version 3 (AGPL-3.0-only). See [LICENSE](LICENSE) for the full text.
@@ -50,7 +52,9 @@ The first import destination is actual expenses. The wizard accepts bank, cash a
 
 **Data → Export** offers UTF-8 CSV for accounts, histories, financial entries and reference data. Choose the filters and columns, review the count and sample, then download. Relationship columns include IDs and selectable readable labels. Dates use UTC epoch seconds in the CSV. A download holds up to 5,000 rows and 8 MiB. Larger datasets can be split with filters.
 
-**Reports** shows actual expenses by category within each currency and recorded balances for each current or savings account. Each chart has a matching table. Category totals containing negative values or lacking a positive sum are shown in the table alone. Balance charts retain every snapshot, ordering equal timestamps by snapshot ID. Lines connect observations and the table lists their recorded times. Filters apply to the signed-in user's authorized records.
+**Reports → Spending over time** charts daily spending and lists the same totals in a table. Select a current account, expense currency, or date range to narrow the report. Each currency has its own series. A day appears when an authorized actual expense has a recorded date and amount, using UTC day boundaries.
+
+**Expenses by category** groups actual expenses within each currency. Category totals containing negative values or lacking a positive sum are shown in the table alone. **Balance history** retains every current or savings account snapshot, ordering equal timestamps by snapshot ID. Lines connect observations and the table lists their recorded times. Filters apply to the signed-in user's authorized records.
 
 ## Optional Docker deployment
 
@@ -81,4 +85,4 @@ The checked-in `db/pvledger.db` is a seeded v0.7 fixture. To try it, copy it to 
 
 A manifest-based plugin can contribute a namespaced page and a menu link. Copy the [sample](src/plugins/sample/plugin.yaml) to a directory under `paths.plugins`, give it a distinct ID, and restart. Enable it in Administration → Plugins. The manifest API v1 accepts `id`, `name`, `api_version`, `menu_label`, and `text`; the page renders the supplied text as plain text. Enable and disable take effect immediately.
 
-See the [application specification](docs/specs/pvledger_application_spec.md) and [database specification](docs/specs/pvledger_database_spec.md).
+See the [application specification](docs/spec/pvledger_application_spec.md) and [database specification](docs/spec/pvledger_database_spec.md).

@@ -2,7 +2,7 @@ meta:
   locale: en_US
   name: English (United States)
   direction: ltr
-slogan: Manager your personal assets with privacy
+slogan: Manage your finances privately
 navigation: Main navigation
 dashboard: Dashboard
 accounts: Accounts
@@ -28,6 +28,11 @@ users: Users
 roles: Roles
 plugins: Plugins
 about: About
+system_info: System information
+operating_system: Operating system
+architecture: CPU architecture
+sqlite_version: SQLite version
+schema_version: Database schema version
 settings: Settings
 login: Sign in
 logout: Sign out
@@ -132,6 +137,8 @@ errors:
   choose_columns: Select at least one column.
 reports: Reports
 expense_breakdown: Expenses by category
+spending_timeline: Spending over time
+day: Day (UTC)
 balance_timeline: Balance history
 data_tools: Data
 import_file: Import

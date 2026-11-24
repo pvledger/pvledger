@@ -275,6 +275,7 @@ export async function workflow(context) {
   }
 
   const balances = route === "reports/balances";
+  const breakdown = route === "reports/expense-categories";
   const filters = panel("report_filters");
   const result = node("div");
   const kind = balances ? field(filters, "account_type", choice([["current",tr("current_accounts")],["savings",tr("savings_accounts")]])) : null;
@@ -309,21 +310,28 @@ export async function workflow(context) {
       const section = node("section"), currency = rows[0].currency;
       const title = balances ? rows[0].account + " · " + currency : currency;
       section.append(node("h2", title));
+      result.append(section);
       const chart = node("canvas");
       chart.className = "chart";
       chart.setAttribute("role", "img");
-      chart.setAttribute("aria-label", title + " · " + tr(balances ? "balance_timeline" : "expense_breakdown"));
+      chart.setAttribute("aria-label", document.querySelector("main h1").textContent + " · " + title);
+      if (!breakdown) {
+        const timeKey = balances ? "date" : "day";
+        section.append(chart);
+        timeline(chart, rows, context, timeKey);
+        section.append(table(rows, balances ? ["id", "date", "amount"] : ["day", "amount"], route));
+        continue;
+      }
       const total = rows.reduce((sum, row) => sum + row.amount, 0);
       const colors = rows.map((_, i) => 'hsl(' + ((165 + i * 137.5) % 360) + ' 54% 38%)');
-      const pie = !balances && total > 0 && rows.every(row => row.amount >= 0);
-      if (balances || pie) {
+      const pie = total > 0 && rows.every(row => row.amount >= 0);
+      if (pie) {
         section.append(chart);
-        if (balances) timeline(chart, rows, context);
-        else pieChart(chart, rows, total, colors);
+        pieChart(chart, rows, total, colors);
       } else section.append(node("p", tr("pie_unavailable")));
       if (pie) for (const row of rows) row.share = new Intl.NumberFormat(context.locale,
         {style:"percent",maximumFractionDigits:2}).format(row.amount / total);
-      const grid = table(rows, balances ? ["id","date","amount"] : (pie ? ["category","amount","share"] : ["category","amount"]), route);
+      const grid = table(rows, pie ? ["category","amount","share"] : ["category","amount"], route);
       if (pie) Array.from(grid.querySelector("tbody").rows).forEach((row, i) => {
         const swatch = node("canvas");
         swatch.width = swatch.height = 12;
@@ -334,7 +342,6 @@ export async function workflow(context) {
         row.cells[0].prepend(swatch);
       });
       section.append(grid);
-      result.append(section);
     }
   }
   action(filters, "filter", display);
@@ -360,14 +367,14 @@ function pieChart(canvas, rows, total, colors) {
   });
 }
 
-function timeline(canvas, rows, {format, locale}) {
+function timeline(canvas, rows, {format, locale}, timeKey) {
   canvas.width = 720;
   canvas.height = 250;
   const ctx = canvas.getContext("2d");
   const colors = getComputedStyle(canvas);
   ctx.font = "14px sans-serif";
   const min = Math.min(...rows.map(r => r.amount)), max = Math.max(...rows.map(r => r.amount));
-  const start = rows[0].date, end = rows[rows.length - 1].date;
+  const start = rows[0][timeKey], end = rows[rows.length - 1][timeKey];
   const bounds = [min,max].map(v => new Intl.NumberFormat(locale, {maximumSignificantDigits: 6}).format(v));
   const left = Math.max(...bounds.map(v => ctx.measureText(v).width)) + 12;
   const x = t => start === end ? (left + 705) / 2 : left + (t - start) / (end - start) * (705 - left);
@@ -377,14 +384,14 @@ function timeline(canvas, rows, {format, locale}) {
   ctx.fillStyle = colors.color;
   ctx.fillText(bounds[0], 1, y(min) + 4);
   if (max !== min) ctx.fillText(bounds[1], 1, y(max) + 4);
-  ctx.fillText(format("date", start, ""), left, 230);
-  if (start !== end) { ctx.textAlign = "right"; ctx.fillText(format("date", end, ""), 710, 230); }
+  ctx.fillText(format(timeKey, start, ""), left, 230);
+  if (start !== end) { ctx.textAlign = "right"; ctx.fillText(format(timeKey, end, ""), 710, 230); }
   ctx.strokeStyle = ctx.fillStyle = colors.getPropertyValue("--accent").trim();
   ctx.lineWidth = 2;
   ctx.beginPath();
-  rows.forEach((r,i) => i ? ctx.lineTo(x(r.date), y(r.amount)) : ctx.moveTo(x(r.date), y(r.amount)));
+  rows.forEach((r,i) => i ? ctx.lineTo(x(r[timeKey]), y(r.amount)) : ctx.moveTo(x(r[timeKey]), y(r.amount)));
   ctx.stroke();
   for (const r of rows) {
-    ctx.beginPath(); ctx.arc(x(r.date), y(r.amount), 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x(r[timeKey]), y(r.amount), 3, 0, Math.PI * 2); ctx.fill();
   }
 }

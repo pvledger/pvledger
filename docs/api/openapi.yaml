@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: PVLedger API
-  version: 0.1.0
+  version: 0.1.1
 servers:
   - url: /api/v1
 security:
@@ -1650,6 +1650,36 @@ paths:
         - $ref: '#/components/parameters/to'
       responses:
         '200': {description: Items with currency, category and amount}
+        '422': { $ref: '#/components/responses/Error' }
+  /reports/spending:
+    get:
+      summary: Daily actual spending by expense currency
+      description: Filters apply to individual authorized expenses before aggregation. Each day is UTC midnight in Unix seconds. Days without a dated amount are omitted.
+      parameters:
+        - $ref: '#/components/parameters/account'
+        - *currencyFilter
+        - $ref: '#/components/parameters/from'
+        - $ref: '#/components/parameters/to'
+      responses:
+        '200':
+          description: Daily totals ordered by currency ID and day (up to 5,000 items)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id_currency, currency, day, amount]
+                      properties:
+                        id_currency: {type: integer}
+                        currency: {type: string}
+                        day: {type: integer, format: int64}
+                        amount: {type: number}
+        '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
   /reports/balances:
     get:
