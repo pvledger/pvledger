@@ -62,6 +62,7 @@ paths:
         '422': { $ref: '#/components/responses/Error' }
     patch:
       summary: Update a record in current accounts
+      description: A changed balance appends the resulting amount and the current UTC Unix second to the account history.
       parameters:
         - $ref: '#/components/parameters/csrf'
       requestBody:
@@ -149,6 +150,7 @@ paths:
         '422': { $ref: '#/components/responses/Error' }
     patch:
       summary: Update a record in savings accounts
+      description: A changed balance appends the resulting amount and the current UTC Unix second to the account history.
       parameters:
         - $ref: '#/components/parameters/csrf'
       requestBody:
@@ -548,13 +550,18 @@ paths:
         '422': { $ref: '#/components/responses/Error' }
     post:
       summary: Create a record in expenses
+      description: Subtract the signed amount from the linked current account in the same transaction. Require a numeric amount, the account currency, and a known account balance.
       parameters:
         - $ref: '#/components/parameters/csrf'
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/Object' }
+            schema:
+              type: object
+              required: [id_account, id_category, id_currency, name, amount]
+              properties:
+                amount: {type: number, description: Signed expense in the account currency}
       responses:
         '201':
           description: Created
@@ -900,6 +907,7 @@ paths:
         '422': { $ref: '#/components/responses/Error' }
     post:
       summary: Add actual income
+      description: Add the signed amount to the linked current account in the same transaction. Require a known balance. Posting occurs on insertion for every valid status.
       parameters:
         - $ref: '#/components/parameters/csrf'
       requestBody:
@@ -1580,6 +1588,7 @@ paths:
   /import/commit:
     post:
       summary: Insert the explicitly selected rows of a reviewed import atomically
+      description: Each selected expense debits its account. The batch, balance changes and resulting history entries commit together.
       parameters:
         - $ref: '#/components/parameters/csrf'
       requestBody:

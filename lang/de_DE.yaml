@@ -13,6 +13,15 @@ income: Tatsächliche Einnahmen
 planned_income: Geplante Einnahmen
 expense_group: Ausgaben
 expenses: Tatsächliche Ausgaben
+post_expenses: Beim Speichern wird die Ausgabe dem gewählten Konto in dessen Währung belastet.
+post_income: Beim Speichern wird die Einnahme dem gewählten Konto gutgeschrieben.
+edit_posted_entry: Änderungen und Löschungen betreffen nur diesen Eintrag. Den Kontostand können Sie im Konto korrigieren.
+confirm_import: Ausgewählte Ausgaben importieren und Konto belasten
+errors:
+  invalid_balance: Geben Sie einen gültigen numerischen Kontostand ein.
+  opening_balance_required: Geben Sie vor der Buchung den aktuellen Kontostand ein.
+  posting_amount_required: Geben Sie einen Betrag für diese Buchung ein.
+  posting_currency_mismatch: Wählen Sie für diese Ausgabe die Währung des Girokontos.
 planned_expenses: Geplante Ausgaben
 recurring_expenses: Wiederkehrende Ausgaben
 categories: Ausgabenkategorien

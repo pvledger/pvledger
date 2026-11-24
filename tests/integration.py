@@ -113,16 +113,21 @@ def verify_schema(db):
     columns = sum(len(db.execute(f"PRAGMA table_info({table})").fetchall()) for table in tables)
     keys = sum(len(db.execute(f"PRAGMA foreign_key_list({table})").fetchall()) for table in tables)
     assert (columns, keys) == (119, 26)
+    assert {r[0] for r in db.execute("SELECT name FROM sqlite_schema WHERE type='trigger'")} == {
+        "pvl_post_expense", "pvl_post_income", "pvl_current_balance_history", "pvl_savings_balance_history"}
     assert list(db.execute("PRAGMA foreign_key_check")) == []
     for table, count in [("pvl_countries", 249), ("pvl_currencies", 178), ("pvl_user_roles", 3)]:
         assert db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == count
 
 
-def data_workflows(client, account, savings):
+def data_workflows(client, account, savings, database):
     api = "/api/v1/"
     assert client.request(api + "lookups/users")[0] == {"id": 1, "label": "admin"}
     assert len(client.request(api + "lookups/countries?page=3")) == 49
     assert client.request(api + "lookups/accounts/current") == [{"id": account, "label": "Checking"}]
+    current = api + f"accounts/current/{account}"
+    opening = client.request(current)["amount"]
+    existing_history = client.request(current + "/history")
     category = client.request(api + "expense-categories", 201, "POST", {"name": "Food"})["id"]
     names = ['=SUM(1,2)', 'Meal, "takeaway"']
     valid = {"name": names[0], "amount": 12.5, "date": 1700000000, "source_id": "A"}
@@ -137,18 +142,39 @@ def data_workflows(client, account, savings):
     client.request(api + "import/commit", 422, "POST", {**commit, "rows": [0, 2]})
     client.request(api + "import/commit", 409, "POST", {**commit, "confirm": False})
     client.request(api + "import/commit", 403, "POST", commit, csrf="")
+    # A failure to append the second snapshot must also undo the first posting.
+    with sqlite3.connect(database) as db:
+        db.execute(f"""CREATE TRIGGER fail_second_snapshot BEFORE INSERT ON pvl_account_history_current
+                    WHEN NEW.amount={opening - 25} BEGIN SELECT RAISE(ABORT,'test rollback'); END""")
+    client.request(api + "import/commit", 409, "POST", commit)
+    assert client.request(current)["amount"] == opening
+    assert client.request(current + "/history") == existing_history
+    assert client.request(api + "expenses")["total"] == 0
+    with sqlite3.connect(database) as db:
+        db.execute("DROP TRIGGER fail_second_snapshot")
+    start = int(time.time())
     assert client.request(api + "import/commit", method="POST", payload=commit) == {"imported": 2, "skipped": 3, "failed": 0}
     client.request(api + "import/commit", 409, "POST", commit)
+    history = client.request(current + "/history")
+    assert history["total"] == existing_history["total"] + 2
+    assert [row["amount"] for row in history["items"][:2]] == [opening - 25, opening - 12.5]
+    assert all(start <= row["date"] <= int(time.time()) for row in history["items"][:2])
     preview = client.request(api + "import/preview", method="POST", payload={**mapping, "rows": [valid]})
     assert preview["rows"][0]["duplicate"]
     client.request(api + "import/preview", 422, "POST", {**payload, "dataset": "income"})
-    client.request(api + "expenses", 201, "POST", {**{k: v for k, v in mapping.items() if k != "dataset"},
-                   "id_currency": 2, "name": "Other", "amount": 7, "date": 1700000001})
+    other_expense = {"id_currency": 2, "id_account": account, "id_category": category,
+                     "name": "Other", "amount": 7, "date": 1700000001}
+    assert client.request(api + "expenses", 422, "POST", other_expense)["error"]["code"] == "posting_currency_mismatch"
+    client.request(api + "import/preview", 422, "POST", {**payload, "id_currency": 2})
+    other = client.request(api + "accounts/current", 201, "POST", {
+        "name": "Other currency", "id_bank": client.request(current)["id_bank"], "id_user": 1, "id_currency": 2, "amount": 0})["id"]
+    client.request(api + "expenses", 201, "POST", {**other_expense, "id_account": other})
+    assert client.request(api + f"accounts/current/{other}")["amount"] == -7
     groups = client.request(api + "reports/expense-categories")["items"]
     assert [(r["id_currency"], r["category"], r["amount"]) for r in groups] == [(1, "Food", 25), (2, "Food", 7)]
     assert client.request(api + "reports/expense-categories?from=1700000001&id_currency=1")["items"] == []
     for kind, parent, amounts in [("current", account, [220.5, 221]), ("savings", savings, [900])]:
-        rows = client.request(api + f"reports/balances?account_type={kind}&id_account={parent}")["items"]
+        rows = client.request(api + f"reports/balances?account_type={kind}&id_account={parent}&to=1700000001")["items"]
         assert [r["amount"] for r in rows] == amounts
     expense_export = {"dataset": "expenses", "columns": ["id_account_label", "name", "amount"],
                       "filters": {"id_currency": 1}, "format": "csv"}
@@ -175,7 +201,7 @@ def data_workflows(client, account, savings):
         else:
             xml = ElementTree.fromstring(body)
             assert xml.findtext(".//CURDEF")
-            assert xml.findtext(".//LEDGERBAL/BALAMT") == "500.5"
+            assert float(xml.findtext(".//LEDGERBAL/BALAMT")) == opening - 25
             rows = xml.findall(".//STMTTRN")
             assert [row.findtext("NAME") for row in rows] == names
             assert all(row.findtext("DTPOSTED") == "20231114221320" for row in rows)
@@ -188,11 +214,12 @@ def data_workflows(client, account, savings):
     client.request(api + "export/download", 422, "POST", {**expense_export, "format": "ofx"})
     client.request(api + "export/download", 403, "POST", {"dataset": "users"})
     client.request(api + "export/download", 422, "POST", {**expense_export, "columns": ["password"]})
-    assert client.request(api + f"accounts/current/{account}")["amount"] == 500.5
-    assert client.request(api + f"accounts/current/{account}/history")["total"] == 2
+    assert client.request(current)["amount"] == opening - 25
+    assert client.request(current + "/history") == history
 
     expense = {"id_account": account, "id_currency": 1, "id_category": category, "name": "Daily expense"}
-    for date, amount in [(-1, 8), (0, 2.5), (3600, -2.5), (86400, None), (None, 10)]:
+    client.request(api + "expenses", 422, "POST", {**expense, "amount": None})
+    for date, amount in [(-1, 8), (0, 2.5), (3600, -2.5), (None, 10)]:
         client.request(api + "expenses", 201, "POST", {**expense, "date": date, "amount": amount})
     client.request(api + "planned-expenses", 201, "POST",
                    {"id_account": account, "id_currency": 1, "name": "Planned", "amount": 90, "date": 0, "status": 0})
@@ -245,7 +272,7 @@ def exercise(directory):
         assert f"<dd>{platform.system()} {platform.release()}</dd>" in about
         assert f"<dd>{platform.machine()}</dd>" in about
         assert re.search(r"<dt>SQLite version</dt><dd>\d+\.\d+\.\d+", about)
-        assert "<dt>Database schema version</dt><dd>0.7.1</dd>" in about
+        assert "<dt>Database schema version</dt><dd>0.7.2</dd>" in about
         assert client.request("/assets/js/app.js").startswith('"use strict"')
         api = "/api/v1/"
         menu = client.request(api + "ui/menu")
@@ -318,10 +345,26 @@ def exercise(directory):
             detail = api + route + f"/{created['id']}"
             assert client.request(detail, 200, "PATCH", {"status": 2})["status"] == 2
             client.request(detail, 204, "DELETE")
-        assert client.request(api + f"accounts/current/{account}")["amount"] == 500.5
-        assert client.request(api + f"accounts/current/{account}/history")["total"] == 2
+        # Both a direct SQL actual income insert and the API insert posted once.
+        assert client.request(api + f"accounts/current/{account}")["amount"] == 666.5
+        assert [r["amount"] for r in client.request(api + f"accounts/current/{account}/history")["items"]] == [
+            666.5, 623.75, 221, 220.5]
         assert client.request(api + f"accounts/savings/{savings}/history")["items"][0]["amount"] == 900
-        data_workflows(client, account, savings)
+        data_workflows(client, account, savings, database)
+        for kind, parent in [("current", account), ("savings", savings)]:
+            target = api + f"accounts/{kind}/{parent}"
+            earlier = client.request(target + "/history")["items"]
+            start = int(time.time())
+            client.request(target, 200, "PATCH", {"amount": 91.25})
+            client.request(target, 200, "PATCH", {"amount": 91.25, "description": "Reviewed"})
+            client.request(target, 422, "PATCH", {"amount": None})
+            if kind == "current":
+                client.request(api + "income", 201, "POST",
+                               {"id_account": parent, "name": "Zero", "date": 0, "amount": 0, "status": 1})
+            rows = client.request(target + "/history")["items"]
+            assert rows[1:] == earlier
+            assert rows[0]["id_account"] == parent and rows[0]["amount"] == client.request(target)["amount"] == 91.25
+            assert start <= rows[0]["date"] <= int(time.time())
         client.request(api + "auth/logout", method="POST")
         client.request(api + "auth/me", 401)
         client.login("viewer")
@@ -345,16 +388,22 @@ def exercise(directory):
         client.request(api + "debts", 422, "POST", {"name": "Other account", "id_account": account})
         owned_account = client.request(api + "accounts/current", 201, "POST",
                                        {"name": "Owned by writer", "id_bank": bank, "id_currency": 1})["id"]
+        owned = api + f"accounts/current/{owned_account}"
+        entry = {"id_account": owned_account, "name": "Owned income", "amount": 30, "date": 0, "status": 1}
+        assert client.request(api + "income", 422, "POST", entry)["error"]["code"] == "opening_balance_required"
+        client.request(owned, 200, "PATCH", {"amount": 0})
         for route in ("income", "planned-income"):
-            entry = {"id_account": owned_account, "name": "Owned income", "amount": 30, "date": 0, "status": 1}
             client.request(api + route, 422, "POST", {**entry, "id_account": account})
             client.request(api + route, 201, "POST", entry)
+        assert [r["amount"] for r in client.request(owned + "/history")["items"]] == [30, 0]
 
     with server(path, port) as client:
         client.login("admin")
         assert client.request("/api/v1/settings")["instance_name"] == "<Local & private>"
         assert client.request("/api/v1/settings")["theme"] == "dark"
-        assert client.request("/api/v1/accounts/current")["total"] == 2
+        assert client.request("/api/v1/accounts/current")["total"] == 3
+        assert client.request(owned)["amount"] == 30
+        assert client.request(owned + "/history")["total"] == 2
         with sqlite3.connect(database) as db:
             verify_schema(db)
 
@@ -364,6 +413,9 @@ def migration(directory, version, blocked=False):
     database = directory / "ledger.sqlite"
     with sqlite3.connect(database) as db:
         db.executescript(SCHEMA)
+        # These fixtures represent versions before the posting rules were installed.
+        for name, in db.execute("SELECT name FROM sqlite_schema WHERE type='trigger'").fetchall():
+            db.execute(f"DROP TRIGGER {name}")
         db.execute("PRAGMA foreign_keys=OFF")
         db.execute("INSERT INTO pvl_users(id,username,password,id_role) VALUES(1,'admin',?,1)",
                    (hashlib.sha256(PASSWORD.encode()).hexdigest(),))
@@ -372,6 +424,8 @@ def migration(directory, version, blocked=False):
         db.execute("INSERT INTO pvl_accounts_current(id,id_bank,id_user,id_currency,name,amount) "
                    "VALUES(1,1,1,1,'Legacy current',33)")
         db.execute("INSERT INTO pvl_account_history_current(id,id_account,date,amount) VALUES (7,1,100,10.5)")
+        if version == "0.7.1":
+            db.execute("INSERT INTO pvl_income(id_account,name,amount,status,date) VALUES(1,'Existing income',12,1,100)")
         if version in {"0.5", "0.6", "0.6.1"}:
             db.execute("DROP TABLE pvl_income")
             db.execute("DROP TABLE pvl_income_planned")
@@ -402,11 +456,16 @@ def migration(directory, version, blocked=False):
     else:
         with server(path, port) as client:
             client.login("admin")
-            assert client.request("/api/v1/settings")["db_version"] == "0.7.1"
+            assert client.request("/api/v1/settings")["db_version"] == "0.7.2"
             assert client.request("/api/v1/accounts/current/1")["amount"] == 33
             history = client.request("/api/v1/accounts/current/1/history")
             if version != "0.5":
+                assert history["total"] == 1
                 assert history["items"][0]["id"] == 7 and history["items"][0]["amount"] == 10.5
+            if version == "0.7.1":
+                assert client.request("/api/v1/income")["total"] == 1
+                client.request("/api/v1/income", 201, "POST", {"id_account": 1, "name": "New", "amount": 12, "status": 1, "date": 100})
+                assert client.request("/api/v1/accounts/current/1/history")["items"][0]["amount"] == 45
             with sqlite3.connect(database) as db:
                 verify_schema(db)
                 assert db.execute("SELECT password FROM pvl_users").fetchone()[0].startswith("pbkdf2-sha256$")
@@ -432,6 +491,6 @@ with tempfile.TemporaryDirectory() as temporary:
                 assert date[2:4] == ("INTEGER", 1)
             assert db.execute("SELECT count(*) FROM pvl_settings").fetchone() == (0,)
 for version, blocked in [("0.5", False), ("0.6", False), ("0.6", True),
-                         ("0.6.1", False), ("0.7", False), ("0.7", True)]:
+                         ("0.6.1", False), ("0.7", False), ("0.7", True), ("0.7.1", False)]:
     with tempfile.TemporaryDirectory() as temporary:
         migration(Path(temporary), version, blocked)

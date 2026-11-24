@@ -561,8 +561,9 @@ Response Application::dispatch(const Request& request) {
                        "VALUES(?,?,?,?,?,1,1)", {username, passwordHash(password),
                            stringField(input, "displayname", 160, false), stringField(input, "firstname", 160, false),
                            stringField(input, "lastname", 160, false)});
-        store->execute("INSERT INTO pvl_settings(id,db_version,instance_name,lang,default_currency,theme) "
-                       "VALUES(1,'0.7.1',?,?,?,?)", preferencesInput);
+        preferencesInput.emplace_back(currentSchemaVersion);
+        store->execute("INSERT INTO pvl_settings(id,instance_name,lang,default_currency,theme,db_version) "
+                       "VALUES(1,?,?,?,?,?)", preferencesInput);
         registerPlugins();
         if (config.missing) config.save();
         transaction.commit();

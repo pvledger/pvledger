@@ -14,6 +14,9 @@ income: Actual income
 planned_income: Planned income
 expense_group: Expenses
 expenses: Actual expenses
+post_expenses: Saving this expense debits the selected account in its currency.
+post_income: Saving this income credits the selected account.
+edit_posted_entry: Edits and deletions affect this entry only. To correct the balance, edit the account.
 planned_expenses: Planned expenses
 recurring_expenses: Recurring expenses
 categories: Expense categories
@@ -96,6 +99,10 @@ statuses:
   "2": Processed with changes
   "3": Declined
 errors:
+  invalid_balance: Enter a finite numeric account balance.
+  opening_balance_required: Set the current account balance before posting an expense or income.
+  posting_amount_required: Enter an amount to post this transaction.
+  posting_currency_mismatch: Choose the currency of the current account to post this expense.
   invalid_input: Check the required values and their formats.
   invalid_reference: Choose an existing record you can access.
   forbidden: You do not have permission for this action.
@@ -177,7 +184,7 @@ result: Review
 duplicate: Possible duplicate
 ready: Ready
 download_review: Download row details
-confirm_import: Import selected rows
+confirm_import: Import selected expenses and debit account
 import_complete: Import complete
 imported: Imported
 skipped: Skipped

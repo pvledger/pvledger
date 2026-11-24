@@ -500,5 +500,41 @@ CREATE TABLE IF NOT EXISTS "pvl_users" (id INTEGER PRIMARY KEY AUTOINCREMENT, us
 CREATE UNIQUE INDEX IF NOT EXISTS ux_pvl_currencies_iso
     ON pvl_currencies (iso);
 
+-- Capture the resulting balance at write time, including changes made by a posting.
+CREATE TRIGGER pvl_current_balance_history AFTER UPDATE OF amount ON pvl_accounts_current
+WHEN NEW.amount IS NOT OLD.amount
+BEGIN
+    SELECT CASE WHEN NEW.amount IS NULL OR NEW.amount NOT BETWEEN -1.7976931348623157e308 AND 1.7976931348623157e308
+        THEN RAISE(ABORT, 'invalid_balance') END;
+    INSERT INTO pvl_account_history_current (id_account, date, amount)
+        VALUES (NEW.id, CAST(strftime('%s', 'now') AS INTEGER), NEW.amount);
+END;
+
+CREATE TRIGGER pvl_savings_balance_history AFTER UPDATE OF amount ON pvl_accounts_savings
+WHEN NEW.amount IS NOT OLD.amount
+BEGIN
+    SELECT CASE WHEN NEW.amount IS NULL OR NEW.amount NOT BETWEEN -1.7976931348623157e308 AND 1.7976931348623157e308
+        THEN RAISE(ABORT, 'invalid_balance') END;
+    INSERT INTO pvl_account_history_savings (id_account, date, amount)
+        VALUES (NEW.id, CAST(strftime('%s', 'now') AS INTEGER), NEW.amount);
+END;
+
+CREATE TRIGGER pvl_post_expense AFTER INSERT ON pvl_expenses
+BEGIN
+    SELECT CASE WHEN typeof(NEW.amount) != 'real' THEN RAISE(ABORT, 'posting_amount_required') END;
+    SELECT CASE WHEN id_currency != NEW.id_currency THEN RAISE(ABORT, 'posting_currency_mismatch')
+                WHEN amount IS NULL THEN RAISE(ABORT, 'opening_balance_required') END
+        FROM pvl_accounts_current WHERE id = NEW.id_account;
+    UPDATE pvl_accounts_current SET amount = amount - NEW.amount WHERE id = NEW.id_account;
+END;
+
+CREATE TRIGGER pvl_post_income AFTER INSERT ON pvl_income
+BEGIN
+    SELECT CASE WHEN typeof(NEW.amount) != 'real' THEN RAISE(ABORT, 'posting_amount_required') END;
+    SELECT CASE WHEN amount IS NULL THEN RAISE(ABORT, 'opening_balance_required') END
+        FROM pvl_accounts_current WHERE id = NEW.id_account;
+    UPDATE pvl_accounts_current SET amount = amount + NEW.amount WHERE id = NEW.id_account;
+END;
+
 COMMIT TRANSACTION;
 PRAGMA foreign_keys = on;

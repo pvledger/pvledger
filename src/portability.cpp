@@ -216,8 +216,11 @@ Value validateMapping(Repository& db, const Value& mapping, int role, Json::Int6
     auto account = positiveId(mapping["id_account"]);
     auto category = positiveId(mapping["id_category"]);
     auto currency = positiveId(mapping["id_currency"]);
-    require(!db.query("SELECT id FROM pvl_accounts_current WHERE id=? AND (?=1 OR id_user=?)",
-                      {account, role, user}).empty(), "invalid_reference");
+    const auto accounts = db.query("SELECT id_currency,amount FROM pvl_accounts_current WHERE id=? AND (?=1 OR id_user=?)",
+                                   {account, role, user});
+    require(!accounts.empty(), "invalid_reference");
+    require(accounts[0]["id_currency"].asInt64() == currency, "posting_currency_mismatch");
+    require(!accounts[0]["amount"].isNull(), "opening_balance_required");
     const auto currencies = db.query("SELECT iso FROM pvl_currencies WHERE id=?", {currency});
     require(!currencies.empty() && !db.query("SELECT id FROM pvl_expenses_categories WHERE id=?", {category}).empty(),
             "invalid_reference");

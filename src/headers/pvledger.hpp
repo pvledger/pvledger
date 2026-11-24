@@ -14,6 +14,7 @@ namespace pvl {
 namespace fs = std::filesystem;
 using Value = Json::Value;
 using Params = std::map<std::string, std::string>;
+inline constexpr char currentSchemaVersion[] = "0.7.2";
 
 struct Error : std::runtime_error {
     int status;

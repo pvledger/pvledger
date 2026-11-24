@@ -1,8 +1,8 @@
 {
   "title": "PVLedger database specification — draft, portable schema contract",
-  "specification_version": "0.7.1-draft",
-  "status": "Draft v0.7.1: derived from user-supplied pvledger(7).sql with required INTEGER Unix-time date columns added to both income tables; SQLite recreation and all 430 seed rows validated.",
-  "source_file": "pvledger_schema_v0.7.1.sql",
+  "specification_version": "0.7.2-draft",
+  "status": "Draft v0.7.2 adds four SQLite triggers for actual expense and income posting and current and savings balance history.",
+  "source_file": "db/pvledger.sql",
   "source_dialect": "SQLite",
   "table_prefix": "pvl_",
   "scope": "Complete SQLite schema (20 tables), income and planned-income timestamp columns, 430 reference seed rows, application conventions, cross-engine mappings and editable descriptions.",
@@ -80,7 +80,7 @@
           "value_semantics": {
             "unit": "linked account currency",
             "meaning": "account balance at date",
-            "date_snapshot_rule": "not defined by source SQL",
+            "date_snapshot_rule": "Server time when the account balance changed.",
             "storage_precision": "SQLite REAL"
           }
         }
@@ -112,7 +112,6 @@
         "Stores dated account-balance snapshots, not individual account transactions.",
         "date and amount are NOT NULL; the foreign-key account reference is NOT NULL.",
         "No UNIQUE (id_account, date) constraint or supporting (id_account, date) index is declared; duplicate timestamps are allowed.",
-        "The schema does not automatically synchronize snapshots with the live parent-account amount.",
         "The snapshot currency is inferred through the associated account; no separate currency column exists.",
         "Confirmed by the latest uploaded pvledger(6).sql: id_account is NOT NULL."
       ],
@@ -191,7 +190,7 @@
           "value_semantics": {
             "unit": "linked account currency",
             "meaning": "account balance at date",
-            "date_snapshot_rule": "not defined by source SQL",
+            "date_snapshot_rule": "Server time when the account balance changed.",
             "storage_precision": "SQLite REAL"
           }
         }
@@ -223,7 +222,6 @@
         "Stores dated account-balance snapshots, not individual account transactions.",
         "date and amount are NOT NULL; the foreign-key account reference is NOT NULL.",
         "No UNIQUE (id_account, date) constraint or supporting (id_account, date) index is declared; duplicate timestamps are allowed.",
-        "The schema does not automatically synchronize snapshots with the live parent-account amount.",
         "The snapshot currency is inferred through the associated account; no separate currency column exists."
       ],
       "source_name": "pvl_account_history_savings",
@@ -3725,7 +3723,9 @@
       "check_constraints": [],
       "explicit_indexes": [],
       "source_create_sql": "CREATE TABLE \"pvl_expenses\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, name TEXT NOT NULL, date INTEGER, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id) NOT NULL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);",
-      "additional_notes": [],
+      "additional_notes": [
+        "Subtract the signed expense amount from its current account on insert. Require matching currency and a known account balance."
+      ],
       "source_name": "pvl_expenses",
       "target_create_sql_sqlite": "CREATE TABLE \"pvl_expenses\" (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, name TEXT NOT NULL, date INTEGER, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id) NOT NULL, id_currency INTEGER REFERENCES pvl_currencies (id) NOT NULL);"
     },
@@ -4132,7 +4132,7 @@
     },
     {
       "name": "pvl_income",
-      "description": "Income records associated with current/checking accounts, each with a mandatory Unix-time date. Exact income posting and status semantics remain application-defined.",
+      "description": "Actual income for a linked current account, credited at insertion.",
       "description_status": "inferred from new SQL table name; editable",
       "columns": [
         {
@@ -4284,7 +4284,7 @@
         "The required status is an application-defined INTEGER; source SQL has no CHECK or enumerated value mapping.",
         "The income account reference is required and points to pvl_accounts_current(id).",
         "No direct relationship between actual and planned income records is declared.",
-        "No trigger, balance update behavior, or automatic history snapshot creation is defined.",
+        "Add the signed income amount to its current account on insert. Require a known account balance.",
         "date INTEGER NOT NULL stores Unix time; UTC epoch seconds are the current documented application convention (not enforceable by SQLite type affinity).",
         "The physical date column is appended to the table definition to allow ALTER TABLE ADD COLUMN on empty v0.7 income tables; existing populated tables require backfilling actual timestamps before a NOT NULL migration."
       ],
@@ -5093,19 +5093,16 @@
     "Imported country/currency names are preserved as supplied; multilingual name variants and special-purpose codes may need separate localization records.",
     "SQLite requires PRAGMA foreign_keys=ON on application connections; FK ON DELETE/UPDATE actions default to NO ACTION.",
     "Specify recurrence rules for pvl_expenses_recurring and date/amount update workflows.",
-    "History rows have no unique (id_account, date) constraint, so multiple snapshots per account per timestamp are allowed; decide application handling.",
-    "Define snapshot capture cadence (per change, daily closing, scheduled), timestamp/day boundaries, backdated edits and retention.",
     "No history indexes on (id_account, date); add only with a future approved schema revision if needed.",
-    "No triggers synchronize live account amount with history. The application is responsible for consistency and account deletion behavior.",
     "v0.6 initialization dropped DROP TABLE statements; seed INSERTs still use fixed IDs and will fail on rerun against an initialized database.",
     "v0.6.1 requires historical current-account id_account NOT NULL. If migrating a populated v0.6 database, resolve any existing NULL account references before rebuilding the table.",
     "Define pvl_income.status allowed values and the transitions between states; the SQL requires INTEGER but has no CHECK or mapping.",
     "Define pvl_income_planned.status allowed values and whether they share semantics with planned expenses; do not assume the 0–3 planned expense codes apply.",
-    "Define when actual income updates pvl_accounts_current.amount and whether/how it produces pvl_account_history_current snapshots; no triggers exist.",
     "Define if planned income becomes actual income through a relationship or application workflow; the SQL declares no link between the two tables.",
     "Both income tables store amount REAL and reference an account, not a currency; define currency, sign, precision, and conversion behavior in application code.",
     "The two income date columns are required INTEGER Unix time. Exact meaning of actual vs planned income timestamp (receipt date, scheduled payment, etc.) is application-defined; seconds in UTC are a draft convention.",
-    "A v0.7 database with populated income tables cannot add these NOT NULL date fields without providing accurate historical timestamps for those existing records. Do not invent dates or silently drop records."
+    "A v0.7 database with populated income tables cannot add these NOT NULL date fields without providing accurate historical timestamps for those existing records. Do not invent dates or silently drop records.",
+    "Define history retention and correction procedures for posted transactions."
   ],
   "cross_database_mapping": {
     "sqlite": {
@@ -5152,16 +5149,11 @@
     }
   },
   "revision": {
-    "from": "0.7-draft",
-    "date": "2026-11-23",
-    "source_file": "pvledger(7).sql (two user-requested date columns added in derived pvledger_schema_v0.7.1.sql)",
+    "from": "0.7.1-draft",
+    "date": "2026-11-24",
+    "source_file": "db/pvledger.sql",
     "changes": [
-      "Added date INTEGER NOT NULL to pvl_income and pvl_income_planned; values represent Unix time (application convention: UTC epoch seconds).",
-      "Both new date columns have no SQL default, check constraint, or independent date-related index.",
-      "All existing 20 tables, 26 foreign keys, indexes and 430 seed-record values remain unchanged other than the 2 added columns.",
-      "Total columns increased from 117 to 119; NOT NULL non-PK columns increased from 47 to 49.",
-      "Both new income tables remain linked to pvl_accounts_current via required id_account foreign keys; income status meanings and posting rules remain open.",
-      "Full initialization and empty-income-table migration tested in SQLite; migration intentionally refuses populated income tables until real date values are provided."
+      "Install four triggers on fresh databases and upgrade existing databases without replaying historical transactions."
     ]
   },
   "design_decisions": {
@@ -5249,8 +5241,9 @@
       "storage": "Historical balance and new income-table amounts are REAL NOT NULL; previously existing financial amount columns retain original nullability and SQLite REAL types.",
       "pvl_account_history_current.amount": "current/checking account funds balance as captured at a specific historical timestamp (NOT NULL)",
       "pvl_account_history_savings.amount": "savings account funds balance as captured at a specific historical timestamp (NOT NULL)",
-      "pvl_income.amount": "required REAL amount for an income record (precise posting and sign rules unspecified)",
-      "pvl_income_planned.amount": "required REAL amount for a planned income record (precise posting and sign rules unspecified)"
+      "pvl_income.amount": "signed amount credited on insert in the account currency",
+      "pvl_income_planned.amount": "projected amount",
+      "pvl_expenses.amount": "signed amount debited on insert in the account currency"
     },
     "settings_singleton": {
       "table": "pvl_settings",
@@ -5295,10 +5288,10 @@
       },
       "date": "INTEGER NOT NULL Unix timestamp, UTC epoch seconds by draft convention",
       "amount": "REAL NOT NULL; recorded account funds balance in the linked account currency",
-      "no_automatic_balance_sync": true,
+      "no_automatic_balance_sync": false,
       "unique_per_account_and_timestamp": false,
       "no_date_or_account_date_index_in_source": true,
-      "snapshot_cadence": "not specified",
+      "snapshot_cadence": "One snapshot per changed balance on update, in UTC seconds.",
       "no_history_seed_rows": true,
       "account_link_requirement": "Both account-history id_account columns require a valid parent record (NOT NULL plus foreign key enforcement)."
     },
@@ -5321,8 +5314,8 @@
       "date_fields_present": true,
       "currency_fields_present": false,
       "planned_income_to_actual_link": "not defined",
-      "automatic_account_balance_update": "not defined",
-      "note": "Both income dates are explicitly required by user; exact event interpretation and status, currency and posting behavior remain open.",
+      "automatic_account_balance_update": "Add the signed income amount to its current account on insert. Require a known account balance.",
+      "note": "Planned income and subsequent changes to income records do not post.",
       "date_storage": {
         "column": "date",
         "type": "INTEGER",
@@ -5370,6 +5363,10 @@
     {
       "file": "pvledger_schema_v0.7.1.sql",
       "role": "v0.7.1 derived SQLite schema: two required Unix-time date fields added to the user-supplied pvledger(7).sql"
+    },
+    {
+      "file": "db/pvledger.sql",
+      "role": "v0.7.2 SQLite initializer and posting rules"
     }
   ],
   "revision_history": [
@@ -5473,6 +5470,14 @@
         "Both new income tables remain linked to pvl_accounts_current via required id_account foreign keys; income status meanings and posting rules remain open.",
         "Full initialization and empty-income-table migration tested in SQLite; migration intentionally refuses populated income tables until real date values are provided."
       ]
+    },
+    {
+      "from": "0.7.1-draft",
+      "date": "2026-11-24",
+      "source_file": "db/pvledger.sql",
+      "changes": [
+        "Install four triggers on fresh databases and upgrade existing databases without replaying historical transactions."
+      ]
     }
   ],
   "schema_counts": {
@@ -5483,7 +5488,7 @@
     "additional_unique_constraints": 1,
     "explicit_secondary_indexes": 1,
     "views": 0,
-    "triggers": 0,
+    "triggers": 4,
     "required_foreign_keys": 25,
     "optional_foreign_keys": 1,
     "columns_not_null_excluding_primary_keys": 49,
@@ -5530,5 +5535,11 @@
     ],
     "semantics": "These are explicit INSERT rows, not column DEFAULT expressions, and therefore belong to the initialized dataset, not the DDL alone.",
     "migration_note": "Full initialization reinserts 430 fixed-ID reference rows; v0.7 to v0.7.1 migration adds only required income date columns to EMPTY income tables. Backfill real times before enforcing NOT NULL on any populated income tables."
+  },
+  "triggers": {
+    "pvl_post_expense": "Subtract the signed expense amount from its current account on insert. Require matching currency and a known account balance.",
+    "pvl_post_income": "Add the signed income amount to its current account on insert. Require a known account balance.",
+    "pvl_current_balance_history": "Append the resulting current account balance and current UTC Unix second on a change of amount.",
+    "pvl_savings_balance_history": "Append the resulting savings account balance and current UTC Unix second on a change of amount."
   }
 }

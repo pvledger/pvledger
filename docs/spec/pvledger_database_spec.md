@@ -1,12 +1,12 @@
-# PVLedger — Database Specification (Draft v0.7.1)
+# PVLedger — Database Specification (Draft v0.7.2)
 
-**Source:** user-provided `pvledger(7).sql`, modified into `pvledger_schema_v0.7.1.sql` (SQLite, UTF-8; two mandatory income date fields) · **Target engines:** SQLite, PostgreSQL, MySQL, MariaDB · **Status:** reverse-engineered and updated with user-confirmed application rules.
+**Source:** [SQLite schema](../../db/pvledger.sql). The SQLite implementation uses four triggers for balance posting and history.
 
-> **Schema contract:** The uploaded `pvledger(7).sql` is the v0.7 baseline. The derived v0.7.1 SQL adds only `date INTEGER NOT NULL` to `pvl_income` and `pvl_income_planned`. All other tables, constraints, relationships, and the 430 reference rows are unchanged. Each specification table has editable `description` metadata; this metadata is not an extra physical column.
+> **Schema contract:** v0.7.2 adds posting and history triggers to the v0.7.1 tables. Upgrading preserves existing balances, financial entries, history and reference seeds.
 
 ## 1. Overview and changes from v0.7
 
-**20 tables · 119 columns · 26 foreign keys · 1 explicit secondary index · 430 default rows.**
+**20 tables · 119 columns · 26 foreign keys · 1 explicit secondary index · 4 triggers · 430 default rows.**
 
 | Change | Current contract |
 |---|---|
@@ -115,7 +115,7 @@ Table `description` metadata is editable and **not** an extra database column. P
 
 **Nullability note:** `pvledger(7).sql` explicitly declares `id_account NOT NULL` for this table.
 
-**Snapshot behavior:** `date` and `amount` are mandatory; no unique account/date rule, index on `(id_account, date)`, or automatic synchronization with the live account balance is declared.
+**Snapshot behavior.** Updating an existing account to a different balance appends the new balance and the current UTC Unix second. Multiple changes in one second retain separate history IDs.
 
 ### 3.2 `pvl_account_history_savings`
 
@@ -132,7 +132,7 @@ Table `description` metadata is editable and **not** an extra database column. P
 
 **Nullability note:** `id_account` is NOT NULL; the savings account must exist when SQLite foreign keys are enabled.
 
-**Snapshot behavior:** `date` and `amount` are mandatory; no unique account/date rule, index on `(id_account, date)`, or automatic synchronization with the live account balance is declared.
+**Snapshot behavior.** Updating an existing account to a different balance appends the new balance and the current UTC Unix second. Multiple changes in one second retain separate history IDs.
 
 
 ### 3.3 `pvl_accounts_credit`
@@ -315,7 +315,7 @@ Table `description` metadata is editable and **not** an extra database column. P
 
 ### 3.14 `pvl_income`
 
-**description:** Income records associated with current/checking accounts. The required date stores Unix time; precise income receipt, posting and status-code semantics remain application-defined.
+**description:** Income records associated with current/checking accounts. The required date stores the income event time. Insertion credits the signed amount to the current account.
 
 **description status:** inferred from new SQL table name; editable.
 
@@ -331,7 +331,7 @@ Table `description` metadata is editable and **not** an extra database column. P
 
 **Constraints:** `id` is an autoincrementing primary key; `id_account` is required and references `pvl_accounts_current.id` (NO ACTION on update/delete). No additional unique or CHECK constraints.
 
-**Not specified by the schema:** exact business meaning of `date`, status value meanings, explicit currency field, income posting/snapshot behavior, or any link between planned and actual income.
+**Not specified by the schema:** exact business meaning of `date`, status value meanings, explicit currency field, or any link between planned and actual income.
 
 
 ### 3.15 `pvl_income_planned`
@@ -352,7 +352,7 @@ Table `description` metadata is editable and **not** an extra database column. P
 
 **Constraints:** `id` is an autoincrementing primary key; `id_account` is required and references `pvl_accounts_current.id` (NO ACTION on update/delete). No additional unique or CHECK constraints.
 
-**Not specified by the schema:** exact business meaning of `date`, status value meanings, explicit currency field, income posting/snapshot behavior, or any link between planned and actual income.
+**Not specified by the schema:** exact business meaning of `date`, status value meanings, explicit currency field, or any link between planned and actual income.
 
 
 ### 3.16 `pvl_plugins`
@@ -451,8 +451,8 @@ Table `description` metadata is editable and **not** an extra database column. P
 | `pvl_accounts_savings.amount` | current funds balance (savings account) |
 | `pvl_debts.amount` | current outstanding debt |
 | `pvl_taxes.amount` | tax amount |
-| `pvl_income.amount` | income amount (inferred from table name; actual posting semantics unspecified) |
-| `pvl_income_planned.amount` | planned income amount (inferred; actual posting semantics unspecified) |
+| `pvl_income.amount` | signed amount credited at insertion |
+| `pvl_income_planned.amount` | projected income amount |
 
 No separate `pvl_accounts_check` table exists; checking accounts are modeled by `pvl_accounts_current`. Savings balances are likewise the current funds held in the savings account.
 
@@ -492,9 +492,9 @@ The SQL column remains nullable `INTEGER`, with no CHECK constraint, so the acce
 - **Current/checking history:** `pvl_account_history_current` records a balance (`amount REAL NOT NULL`) at `date INTEGER NOT NULL`, **necessarily associated** with `pvl_accounts_current.id` by `id_account INTEGER NOT NULL`. The latest uploaded SQL (`pvledger(7).sql`) requires this linkage.
 - **Savings history:** `pvl_account_history_savings` records the same fields for a savings account; `id_account INTEGER NOT NULL` references `pvl_accounts_savings.id`.
 - **Balance interpretation:** historical `amount` is the account's recorded funds balance at that time, while `pvl_accounts_current.amount` and `pvl_accounts_savings.amount` remain their **current** funds balances. It is not a deposit/withdrawal transaction or a delta.
-- **Timestamp convention:** as elsewhere, `date` uses INTEGER Unix time (draft: UTC seconds). The SQL does not define the exact snapshot moment, daily cut-off or timezone conversion rules.
+- **Timestamp convention.** Each balance change uses the database clock at write time, in UTC Unix seconds.
 - **Currency:** no `id_currency` column exists in either history table; use the associated account currency. Both history account links are required, so the associated account supplies the currency context.
-- **No automatic reconciliation:** no trigger updates the live balance from snapshots or vice versa. The application must define when to insert snapshots, whether multiple entries per account/date are acceptable, and how to handle account deletion/retention.
+- **Capture.** A change of an existing account to a finite numeric balance, including its first assignment from NULL, appends one snapshot. An account insert or a same-value update creates none. The history tables support several snapshots for the same second.
 - **Query performance:** a composite index on `(id_account, date)` is a possible future optimization, not present in the uploaded SQL.
 
 ### 4.7 Income and planned income (v0.7.1)
@@ -504,7 +504,7 @@ The SQL column remains nullable `INTEGER`, with no CHECK constraint, so the acce
 - **Statuses:** both new `status INTEGER NOT NULL` columns contain application-defined values. The `pvl_expenses_planned` codes 0–3 **must not be assumed** to apply to income.
 - **Amounts and currency:** both new `amount REAL NOT NULL` columns store income amounts. They have no independent currency column; the linked account's currency is the natural application context, but this inheritance is not enforced by SQL.
 - **Dates:** both tables now require `date INTEGER NOT NULL`, storing Unix time (UTC seconds since 1970-01-01 by draft application convention). The actual-income date is intended as the income-event timestamp, and the planned-income date as the expected-income timestamp. No separate created-at or processed-at timestamp exists; the exact event interpretation is an application decision.
-- **No processing automation:** the database defines no FK linking planned income to actual income, no triggers to change account balances, and no automatic account-history snapshots. These behaviors need separate application decisions.
+- **Posting.** Inserting actual income credits the linked current account. Inserting an actual expense debits its signed amount in the account currency. Both require a known starting balance. The insert, account update and resulting snapshot are atomic. Planned entries, edits and deletions do not post.
 - **Existing rows:** SQLite does not allow adding a required column without a default to a nonempty table. If either income table contains records, supply the correct historic Unix timestamps before a migration can enforce NOT NULL.
 
 ## 5. Default seed data (authoritative source rows)
@@ -994,9 +994,9 @@ All currency seed-row `description` values are SQL `NULL`.
 - [ ] First user is created on first run; no account is seeded. Define signup/bootstrap policy, username validation and initial role selection.
 - [ ] SHA-256 is user-selected, but a fast unsalted digest is unsafe for password authentication; consider migrating to Argon2id, scrypt, or bcrypt.
 - [ ] Financial amounts are SQLite REAL; use fixed-precision values in a separately approved change if financial correctness requires it.
-- [ ] Decide whether account history should allow multiple snapshots for the same account/time, and define day-end vs event-time snapshots.
+- [x] Capture current and savings balance changes at write time, keeping separate rows even within the same second.
 - [x] Both account-history tables require non-NULL `id_account` (confirmed in `pvledger(6).sql`); deletion/retention behavior remains to be defined.
-- [ ] Define balance-snapshot creation policy, historical correction rules, and whether to index `(id_account, date)` for queries.
+- [ ] Define historical correction rules and whether to index `(id_account, date)` for queries.
 - [ ] Source currency ISO column is nullable even though all seed codes are present; SQLite UNIQUE index allows multiple NULLs.
 - [ ] The country ISO code has no UNIQUE constraint, despite seeded values being distinct.
 - [ ] Imported country/currency names are preserved as supplied; multilingual name variants and special-purpose codes may need separate localization records.
@@ -1005,7 +1005,7 @@ All currency seed-row `description` values are SQL `NULL`.
 - [ ] Define income and planned-income integer status values and transitions, independent of planned-expense statuses until explicitly decided.
 - [x] Both income tables have `date INTEGER NOT NULL`, storing Unix time.
 - [ ] Define whether `pvl_income.date` means received time or booking time, and whether `pvl_income_planned.date` means the expected deposit time or another scheduled event; confirm seconds vs milliseconds if application convention differs.
-- [ ] Define income balance posting, negative amount rules, currency treatment, and whether income creates balance-history snapshots.
+- [x] Post the signed actual income amount in its account currency on insert and capture the resulting balance when it changes.
 - [ ] Define whether and how a planned income record is linked to or converted into an actual income record.
 
 ## 8. Validation and version history
@@ -1022,6 +1022,7 @@ The JSON companion includes all 20 tables, 119 columns, 26 foreign keys, nullabl
 | v0.6.1 | `pvledger(6).sql` | Both history account foreign keys confirmed NOT NULL. |
 | v0.7 | `pvledger(7).sql` | Added actual and planned income tables, two required account foreign keys; 430 seed rows retained. |
 | v0.7.1 | Derived from `pvledger(7).sql` | Added `date INTEGER NOT NULL` to both income tables; 119 total columns; all seed data and existing relationships unchanged. |
+| v0.7.2 | `db/pvledger.sql` | Added four triggers for insert-time posting and account balance history. Migration installs the triggers without replaying existing entries. |
 
 
 ## v0.6.1 amendment — historical account linkage

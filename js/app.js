@@ -178,6 +178,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     const form = node("form");
     form.className = "form-panel";
     const id = row?.id;
+    const tracksBalance = base === "accounts/current" || base === "accounts/savings";
+    if (base === "expenses" || base === "income")
+      form.append(node("p", tr(id ? "edit_posted_entry" : "post_" + base)));
     const values = new Map();
     for (const field of fields) {
       const name = field.name;
@@ -190,6 +193,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       else input = node("input");
       input.name = name;
       input.required = Boolean(field.notnull || name === "username" || (!id && name === "password"));
+      if (name === "amount" && ((!id && base === "expenses") || (tracksBalance && row?.amount != null))) input.required = true;
       if (name === "password") {
         input.type = "password";
         input.autocomplete = "new-password";
@@ -224,7 +228,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       for (const [name, {field, input, initial}] of values) {
         if (name === "password" && !input.value && id) continue;
         const value = input.value;
-        if (id && (dateField(name) || name === "status") && value === initial) continue;
+        if (id && value === initial && (dateField(name) || name === "status" || (tracksBalance && name === "amount"))) continue;
         if (value === "") payload[name] = null;
         else if (dateField(name)) payload[name] = unixTime(input);
         else if (name === "status") payload[name] = Number(value);
