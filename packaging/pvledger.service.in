@@ -1,0 +1,18 @@
+[Unit]
+Description=PVLedger personal finance ledger
+After=network.target
+
+[Service]
+Type=simple
+User=pvledger
+Group=pvledger
+WorkingDirectory=@CMAKE_INSTALL_PREFIX@/var
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/pvledger -c @CMAKE_INSTALL_PREFIX@/var/config.yaml
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

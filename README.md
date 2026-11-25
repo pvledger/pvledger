@@ -21,7 +21,52 @@ Open `http://127.0.0.1:8080` and choose **Set up a fresh instance** to set prefe
 
 The default static build verifies the final ELF has no interpreter or shared-library dependencies. Supply a static library prefix through `CMAKE_PREFIX_PATH` if needed. Use `-DPVLEDGER_STATIC=OFF` for a dynamically linked development build.
 
-Use `cmake --install build` to install the executable and assets. Set `CMAKE_INSTALL_PREFIX` at configure time for a custom installation. Immutable resources, including templates, scripts, and the initial SQL, are installed under the configured data directory.
+Use `sudo cmake --install build --component PVLedger` to install the executable and assets under `/opt/pvledger` by default. Set `CMAKE_INSTALL_PREFIX` at configure time for a custom installation. Immutable resources, including templates, scripts, and the initial SQL, are installed under `share/pvledger`. The `PVLedger` component excludes development files belonging to build dependencies.
+
+## Native packages and services
+
+Install [nFPM](https://nfpm.goreleaser.com/docs/install/) (validated with 2.49.0) on the build machine. Packaging requires the static Linux x86-64 build and the `/opt/pvledger` prefix; nFPM is not needed to run the app. The [nFPM configuration template](packaging/nfpm.yaml.in) supplies package contents, metadata, dependencies and lifecycle hooks.
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPVLEDGER_STATIC=ON -DCMAKE_INSTALL_PREFIX=/opt/pvledger
+cmake --build build --parallel
+cmake --build build --target packages
+```
+
+Artifacts appear in `build/packages/`. Select `package-deb`, `package-rpm`, or `package-archlinux` to build just one format. Use `-DPVLEDGER_NFPM=/path/to/nfpm` if it is not on `PATH`, and `-DPVLEDGER_PACKAGE_RELEASE=2` to increment the packaging revision without changing the application version. Package versions come from the CMake project version. Targets stage the install inside the build directory and do not require root or install anything on the build host.
+
+| Systems | Package | Install command (substitute the generated filename) |
+| --- | --- | --- |
+| Debian / Ubuntu | `.deb` | `sudo apt install ./pvledger_0.1.1-1_amd64.deb` |
+| CentOS / Rocky Linux / Red Hat / compatible RPM systems | `.rpm` | `sudo dnf install ./pvledger-0.1.1-1.x86_64.rpm` |
+| Arch Linux / Artix / Manjaro | `.pkg.tar.zst` | `sudo pacman -U ./pvledger-0.1.1-1-x86_64.pkg.tar.zst` |
+
+Packages install `/opt/pvledger/bin/pvledger`, the resources under `/opt/pvledger/share/pvledger`, and service templates under `/opt/pvledger/share/doc/PVLedger`. They also install `/etc/init.d/pvledger` and `/usr/lib/systemd/system/pvledger.service` as service-manager integration files. Installation creates a system user/group named `pvledger` and a private, writable `/opt/pvledger/var` directory. The first run uses `/opt/pvledger/var/config.yaml` and `/opt/pvledger/var/data/pvledger.sqlite`; setup creates the configuration if it is missing. The service account cannot modify the executable or bundled assets.
+
+On systemd hosts:
+
+```sh
+sudo systemctl enable --now pvledger.service
+sudo systemctl status pvledger.service
+journalctl -u pvledger.service
+```
+
+On SysV init hosts:
+
+```sh
+sudo /etc/init.d/pvledger start
+sudo /etc/init.d/pvledger status
+sudo /etc/init.d/pvledger restart
+sudo /etc/init.d/pvledger stop
+```
+
+Enable boot startup using the host's SysV tools, for example `sudo update-rc.d pvledger defaults` on Debian, or `sudo chkconfig --add pvledger` followed by `sudo chkconfig pvledger on` on compatible RPM systems. The SysV script uses `setpriv` and `flock` from util-linux, drops privileges before running the app, writes logs to `/opt/pvledger/var/pvledger.log`, and keeps PID/lock files under root-owned `/run/pvledger`. Arrange log rotation for long-running SysV installations. Optional root-owned `/etc/default/pvledger` shell settings can override the variables at the top of the template. Configuration reload is a restart. Use one service manager per instance. Artix installations using OpenRC, runit, s6 or dinit need a service definition for that manager; the SysV template can still be invoked manually.
+
+For a manual CMake installation, run `sudo sh packaging/scripts/postinstall.sh` from the source checkout to create the service account and data directory (for the default prefix), then copy the generated SysV template from `build/packaging/pvledger.init` to `/etc/init.d/pvledger` with mode `0755`, or install the generated systemd unit. Custom prefixes require adjusting the account home/data directory and service paths.
+
+Package installation does not start or enable the service automatically. Open `http://127.0.0.1:8080/setup` after starting, or use an SSH tunnel to that address on a remote server. Back up the ledger before upgrades, then restart the service explicitly after installing the new package. Existing configuration and SQLite files are not package payload and survive upgrades, removal and Debian purge; removal stops the service and retains the account and data. Delete retained financial data only when you intentionally want to discard it.
+
+Validate artifacts with `python3 tests/packages.py build/packages` (requires `bsdtar` and `readelf`; RPM metadata checks also use `rpm` when installed). `sudo python3 tests/service.py build/pvledger build/packaging/pvledger.init` tests the real SysV lifecycle and privilege dropping in a temporary directory without registering a host service. CI runs these checks and the existing application/minimal-runtime suites, then uploads all three packages.
 
 ## Configuration and access
 

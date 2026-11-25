@@ -1,0 +1,36 @@
+if(NOT "@CMAKE_SYSTEM_NAME@" STREQUAL "Linux" OR NOT "@CMAKE_SYSTEM_PROCESSOR@" MATCHES "^(x86_64|amd64|AMD64)$")
+  message(FATAL_ERROR "Native packages currently support Linux x86-64 only")
+endif()
+if(NOT "@PVLEDGER_STATIC@" OR NOT "@CMAKE_INSTALL_PREFIX@" STREQUAL "/opt/pvledger"
+   OR NOT "@CMAKE_INSTALL_BINDIR@" STREQUAL "bin" OR NOT "@CMAKE_INSTALL_DATADIR@" STREQUAL "share"
+   OR NOT "@CMAKE_INSTALL_FULL_DOCDIR@" MATCHES "^/opt/pvledger/")
+  message(FATAL_ERROR "Reconfigure with -DPVLEDGER_STATIC=ON -DCMAKE_INSTALL_PREFIX=/opt/pvledger -DCMAKE_INSTALL_BINDIR=bin -DCMAKE_INSTALL_DATADIR=share -DCMAKE_INSTALL_DOCDIR=share/doc/PVLedger")
+endif()
+find_program(nfpm NAMES "@PVLEDGER_NFPM@" REQUIRED)
+function(run_checked)
+  execute_process(COMMAND ${ARGV} WORKING_DIRECTORY "@CMAKE_CURRENT_SOURCE_DIR@" RESULT_VARIABLE result)
+  if(NOT result EQUAL 0)
+    message(FATAL_ERROR "Packaging command failed (${result}): ${ARGV}")
+  endif()
+endfunction()
+run_checked("@CMAKE_COMMAND@" "-DBINARY=@CMAKE_CURRENT_BINARY_DIR@/pvledger"
+  "-DREADELF=@PVL_READELF@" -P "@CMAKE_CURRENT_SOURCE_DIR@/cmake/VerifyStatic.cmake")
+# Each target has its own staging directory, so individual targets can run in parallel.
+set(stage "@package_dir@/stage-${PACKAGER}")
+file(REMOVE_RECURSE "${stage}")
+run_checked("@CMAKE_COMMAND@" -E env "DESTDIR=${stage}"
+  "@CMAKE_COMMAND@" --install "@CMAKE_CURRENT_BINARY_DIR@" --component PVLedger)
+# nFPM does not expand environment variables in tree source paths.
+file(READ "@package_dir@/nfpm.yaml" package_config)
+string(REPLACE "\${PVLEDGER_PACKAGE_STAGE}" "${stage}" package_config "${package_config}")
+file(WRITE "${stage}/nfpm.yaml" "${package_config}")
+file(MAKE_DIRECTORY "@CMAKE_CURRENT_BINARY_DIR@/packages")
+if(PACKAGER STREQUAL "all")
+  set(formats deb rpm archlinux)
+else()
+  set(formats "${PACKAGER}")
+endif()
+foreach(format IN LISTS formats)
+  run_checked("${nfpm}" package --config "${stage}/nfpm.yaml"
+    --packager "${format}" --target "@CMAKE_CURRENT_BINARY_DIR@/packages/")
+endforeach()

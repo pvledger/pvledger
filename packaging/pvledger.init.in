@@ -1,0 +1,94 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:          pvledger
+# Required-Start:    $local_fs $network
+# Required-Stop:     $local_fs $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: PVLedger personal finance ledger
+### END INIT INFO
+# chkconfig: - 90 10
+# description: Private, self-hosted personal finance ledger
+# Template: adjust these paths and the account for a custom installation.
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+DAEMON="@CMAKE_INSTALL_FULL_BINDIR@/pvledger"
+SERVICE_USER=pvledger
+SERVICE_GROUP=pvledger
+WORKDIR="@CMAKE_INSTALL_PREFIX@/var"
+CONFIG=$WORKDIR/config.yaml
+LOGFILE=$WORKDIR/pvledger.log
+RUNDIR=/run/pvledger
+STOP_TIMEOUT=30
+# Optional root-owned shell settings; never load this from the writable data directory.
+if [ -r /etc/default/pvledger ]; then . /etc/default/pvledger; fi
+PIDFILE=$RUNDIR/pvledger.pid
+
+running() {
+    [ -r "$PIDFILE" ] || return 1
+    read -r pid started < "$PIDFILE" || return 1
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$pid" -gt 1 ] || return 1
+    [ -r "/proc/$pid/stat" ] || return 1
+    # The executable plus Linux start time protects against stale/reused PIDs.
+    current=$(awk '{if ($3 != "Z") print $22}' "/proc/$pid/stat" 2>/dev/null)
+    [ -n "$started" ] && [ "$current" = "$started" ] || return 1
+    executable=$(readlink "/proc/$pid/exe") || return 1
+    [ "$executable" = "$DAEMON" ] || [ "$executable" = "$DAEMON (deleted)" ]
+}
+
+start() {
+    if running; then echo "pvledger is already running ($pid)"; return 0; fi
+    [ -x "$DAEMON" ] || { echo "Missing executable: $DAEMON" >&2; return 5; }
+    [ -d "$WORKDIR" ] || { echo "Missing service data directory: $WORKDIR" >&2; return 6; }
+    command -v setpriv >/dev/null 2>&1 || { echo "Install util-linux (setpriv)" >&2; return 5; }
+    cd "$WORKDIR" || return 1
+    # Detach from the invoking terminal and close the service lock in the child.
+    # Redirection happens AFTER dropping privileges. This child is not a group
+    # leader, so setsid execs without forking and preserves the PID recorded below.
+    setsid setpriv --reuid="$SERVICE_USER" --regid="$SERVICE_GROUP" --init-groups \
+      sh -c 'umask 077; exec "$1" -c "$2" >> "$3" 2>&1' sh "$DAEMON" "$CONFIG" "$LOGFILE" \
+      </dev/null 9>&- &
+    pid=$!
+    started=$(awk '{print $22}' "/proc/$pid/stat" 2>/dev/null)
+    printf '%s %s\n' "$pid" "$started" > "$PIDFILE"
+    sleep 1
+    if running; then echo "Started pvledger ($pid)"; return 0; fi
+    rm -f "$PIDFILE"
+    echo "pvledger failed to start; see $LOGFILE" >&2
+    return 1
+}
+
+stop() {
+    if ! running; then rm -f "$PIDFILE"; echo "pvledger is stopped"; return 0; fi
+    kill -TERM "$pid" || return 1
+    remaining=$STOP_TIMEOUT
+    while running; do
+        if [ "$remaining" -le 0 ]; then
+            echo "pvledger did not stop; leaving its PID file for inspection" >&2
+            return 1
+        fi
+        sleep 1
+        remaining=$((remaining - 1))
+    done
+    rm -f "$PIDFILE"
+    echo "Stopped pvledger"
+}
+
+case "${1:-}" in
+    status)
+        if running; then echo "pvledger is running ($pid)"; exit 0; fi
+        echo "pvledger is stopped"; exit 3 ;;
+    start|stop|restart|force-reload) ;;
+    *) echo "Usage: $0 {start|stop|restart|force-reload|status}" >&2; exit 2 ;;
+esac
+[ "$(id -u)" -eq 0 ] || { echo "Run service actions as root" >&2; exit 4; }
+umask 022
+# Keep PID and lock files outside the service user's writable directory.
+install -d -m 0755 -o root -g root "$RUNDIR" || exit 1
+exec 9>"$RUNDIR/lock"
+flock -x 9 || exit 1
+case "$1" in
+    start) start ;;
+    stop) stop ;;
+    restart|force-reload) stop && start ;;
+esac

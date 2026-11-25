@@ -6,6 +6,7 @@ ARG BUILD_JOBS=4
 WORKDIR /source
 COPY CMakeLists.txt LICENSE ./
 COPY cmake ./cmake
+COPY packaging ./packaging
 COPY src ./src
 COPY templates ./templates
 COPY js ./js

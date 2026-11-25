@@ -1,14 +1,14 @@
 # PVLedger — Web Application Specification
 
-**Document version:** Draft v0.10\
-**Date:** 2026-11-24  
+**Document version:** Draft v0.11\
+**Date:** 2026-11-25\
 **Product:** PVLedger  
 **Application release:** 0.1.1\
 **Slogan:** “Manage your finances privately”\
 **Document status:** Working draft — requirements and proposed architecture; not a final implementation contract  
 **Database reference:** SQLite schema v0.7.2. [Database specification](pvledger_database_spec.md)\
 **Target release:** v1 (SQLite-first)  
-**Scope of this revision:** Cash flow estimates, spreadsheet exports, database recovery from Settings or setup, and commercial licensing.
+**Scope of this revision:** SysV service template and nFPM packaging for Debian, RPM and Arch-family systems under `/opt/pvledger`, with persistent service data and release validation. Database schema and application version are unchanged.
 
 > **Reading guide:** **Required** means supplied by the project owner or established in the attached database specification. **Proposed** is a starting implementation choice that may be changed. **Later** means explicitly deferred or not yet specified. The database specification and its source SQL govern the *existing* schema; this document must not be read as permission to modify it silently.
 
@@ -158,6 +158,9 @@ PVLedger is offered under AGPL-3.0-only or a separate written commercial license
 | APP-060 | Report daily actual and estimated cash flow across all authorized current accounts or one selected account | Required by owner, v0.10 | Must |
 | APP-061 | Export tabular selections to ODS and XLSX workbooks | Required by owner, v0.10 | Must |
 | APP-062 | Download and restore a complete ledger from Administration → Settings and offer restoration during initial setup | Required by owner, v0.10 | Must |
+| APP-063 | Supply a SysV init script template for running PVLedger as a service with start, stop, restart and status actions | Required by owner, v0.11 | Must |
+| APP-064 | Use nFPM to package the built application as Debian `.deb`, RPM for CentOS/Rocky Linux/Red Hat-compatible systems, and Arch/Artix/Manjaro `.pkg.tar.zst` | Required by owner, v0.11 | Must |
+| APP-065 | Install the application and bundled assets under `/opt/pvledger`; preserve operator configuration and financial data across package upgrades and removal | Required location; data-preservation safeguard, v0.11 | Must |
 
 ### 3.1 Main UI pages and modules
 
@@ -881,6 +884,8 @@ The root `Dockerfile` and `docker-compose.yaml` are **part of the project struct
 | `README.md` | Root-level overview; prerequisites; native CMake build; configuration; starting the application; optional Docker instructions; links to `docs/spec/`. |
 | `Dockerfile` | Reproducible, optional Docker image build for PVLedger and its required runtime assets. |
 | `docker-compose.yaml` | Optional container deployment definition with config/database persistence and a configurable web port. |
+| `packaging/` | nFPM YAML template, SysV init template, companion systemd unit and package lifecycle hooks. |
+| `cmake/Packaging.cmake`, `cmake/Package.cmake.in` | Configure service/package files, stage the PVLedger install component and invoke nFPM. |
 
 ### 13.4 CMake expectations
 
@@ -892,6 +897,8 @@ The root `Dockerfile` and `docker-compose.yaml` are **part of the project struct
 - Configure CTest (or equivalent) with unit/integration test targets.
 - Keep third-party dependency retrieval reproducible; avoid unpinned downloads in production build scripts.
 - **Native build is the primary supported workflow; Docker must remain optional.**
+- Default native installation prefix is `/opt/pvledger`. The `PVLedger` install component includes only the app, runtime assets, examples, service templates and licenses, excluding dependency headers/static archives.
+- Provide optional `packages`, `package-deb`, `package-rpm` and `package-archlinux` targets. Resolve nFPM only when packaging is requested; regular builds must not require it.
 
 **Proposed native build commands:**
 
@@ -900,10 +907,10 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPVLEDGER_STATIC=ON
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ./build/pvledger --version
-./build/pvledger -c ./config/config.yaml
+./build/pvledger -c ./src/config/config.yaml
 ```
 
-The commands describe the target developer workflow; the repository and `CMakeLists.txt` have not yet been generated.
+These commands are implemented by the repository's `CMakeLists.txt`.
 
 ### 13.5 Static linking and plugin compatibility
 
@@ -932,6 +939,17 @@ docker compose -f docker-compose.yaml down
 
 The exact service configuration, image base, volume mappings, listening address, and exposed ports remain implementation decisions.
 
+### 13.7 Native packages and service lifecycle
+
+- **Required formats/tool:** nFPM produces `.deb`, `.rpm` and Zstandard-compressed Arch `.pkg.tar.zst` packages from the built app. The initial target is static Linux x86-64, mapped to Debian `amd64` and RPM/Arch `x86_64`. Package version follows `PROJECT_VERSION`; `PVLEDGER_PACKAGE_RELEASE` controls the package revision.
+- **Build contract:** configure with `-DCMAKE_INSTALL_PREFIX=/opt/pvledger -DPVLEDGER_STATIC=ON`, then run `cmake --build build --target packages`. Individual format targets are also available. Staging/output stay under the build directory, require no root, and exclude source fixtures, runtime databases and development dependencies. Reject incompatible prefixes, layouts, platforms and non-static executables before packaging.
+- **Layout:** executable `/opt/pvledger/bin/pvledger`; templates, JS, locales, themes, plugins, initial SQL and licenses `/opt/pvledger/share/pvledger`; generated examples and service templates `/opt/pvledger/share/doc/PVLedger`. Only service-manager integration files reside outside `/opt/pvledger`: `/etc/init.d/pvledger` and `/usr/lib/systemd/system/pvledger.service`.
+- **Account/state:** package hooks create the system account/group `pvledger` and mode-0700 `/opt/pvledger/var`. Both services run as that account with configuration `/opt/pvledger/var/config.yaml`; a fresh instance stores SQLite at `/opt/pvledger/var/data/pvledger.sqlite`. The application creates the configuration during setup. Immutable packaged files remain root-owned. Package contents never include the mutable configuration or database.
+- **SysV template:** include LSB and chkconfig metadata and start/stop/restart/force-reload/status commands. Use util-linux `setpriv` for privilege dropping and `flock` to serialize lifecycle actions. Keep PID/lock files in root-owned `/run/pvledger`, validate process executable and start time before signaling, handle repeated start/stop and stale PIDs, and use a bounded graceful SIGTERM shutdown. Log to `/opt/pvledger/var/pvledger.log`; operators configure rotation. Root-owned `/etc/default/pvledger` may override template settings.
+- **Current distributions:** supply a companion systemd unit so systemd hosts do not depend on SysV compatibility generators. Operators select one service manager. Artix OpenRC/runit/s6/dinit definitions are outside this revision; document manual SysV invocation and manager-specific integration needs.
+- **Install/upgrade/remove:** do not automatically start, enable or restart the service. Document explicit activation and post-upgrade restart. Removal stops/disables the service and removes SysV boot registration where supported. Preserve the service account and runtime directory, including on Debian purge. Upgrades must not overwrite configuration/data or stop the running instance in the old package's removal hooks. Preserve local edits to the installed SysV script using package-manager configuration-file semantics.
+- **Validation:** inspect all three generated artifacts for metadata, payload, permissions, licenses and static linkage; run CLI checks after extraction. Exercise real SysV start/status/restart/stop, privilege dropping, repeated actions, unrelated stale PID safety and failed startup in a temporary directory. Run the existing integration and minimal-runtime checks. CI publishes the validated artifacts. Native installation on every target distribution remains a release-platform check separate from archive validation.
+
 ---
 
 ## 14. Non-functional requirements
@@ -956,6 +974,7 @@ The exact service configuration, image base, volume mappings, listening address,
 ### 14.1 Minimum test cases
 
 - CMake target and installed filename are exactly `pvledger`; release builds pass platform static-link inspection and a minimal-runtime smoke test.
+- nFPM produces all three native package formats under the supported `/opt/pvledger` layout, with complete resources/licenses and no database fixtures or dependency development files. SysV service actions run the server unprivileged and handle stale PIDs/startup failures; package upgrades/removal preserve configuration and financial data.
 - Desktop menu is vertical at the left, includes Reports and Data (Import/Export), keeps submenu groups beneath their parents and is accessible on keyboard/mobile devices.
 - Every FK form field uses its actual referenced table for selectable options and shows a readable label; user selectors prefer `displayname`, then `username`; IDs, never display labels, are submitted and validated server-side.
 - CSV, QIF and OFX/QFX test fixtures (including encodings, malformed input, duplicated transactions, sign conventions and unusual dates) preview correctly; unrecognized records/errors cannot be silently committed.
@@ -1072,6 +1091,8 @@ A first usable release is ready for review when all of the following are demonst
 - [ ] Required repository paths exist: `src/`, `src/headers/`, `templates/`, `js/`, `docs/`, `docs/spec/`, root `README.md`, `Dockerfile` and `docker-compose.yaml`.
 - [ ] CMake builds a **statically linked core `pvledger` release executable** without Docker, verified on each supported target; optional Docker build/Compose deployment persists SQLite data and does not require committing secrets. Any plugin dynamic-loading exception is documented.
 - [ ] Source, build steps, configuration reference and extension guidelines are documented.
+- [ ] nFPM builds installable Debian, RPM and Arch-family packages for Linux x86-64, with application files under `/opt/pvledger`, declared service-tool dependencies and retained mutable data.
+- [ ] The SysV init template supports start/stop/restart/status as an unprivileged service account and rejects stale PIDs. Service activation, upgrades, removal and systemd/Artix integration limitations are documented and validated.
 
 ---
 
@@ -1089,6 +1110,8 @@ The schema and database specification are maintained in the repository. [SQLite 
 - PostgreSQL adapter: https://oatpp.io/docs/modules/oatpp-postgresql/
 - Example Oat++ CRUD / SQLite service: https://oatpp.io/examples/crud/
 - Optional Swagger/OpenAPI integration: https://oatpp.io/docs/modules/oatpp-swagger/
+- nFPM configuration and lifecycle hooks: https://nfpm.goreleaser.com/docs/configuration/
+- nFPM package lifecycle guidance: https://nfpm.goreleaser.com/docs/tips/
 
 **Change log:**
 
@@ -1104,3 +1127,4 @@ The schema and database specification are maintained in the repository. [SQLite 
 | v0.8 | 2026-11-24 | Specified the PVLedger 0.1.1 slogan, About system information and link behavior, and daily Spending over time report. |
 | v0.9 | 2026-11-24 | Specified actual expense and income posting, current and savings balance history capture, atomic imports and the v0.7.2 database upgrade. |
 | v0.10 | 2026-11-24 | Added cash flow estimates, ODS and XLSX exports, administrator and first-run backup recovery, and dual licensing. |
+| v0.11 | 2026-11-25 | Added SysV service template, companion systemd unit, nFPM Debian/RPM/Arch packaging under `/opt/pvledger`, persistent service data, lifecycle rules and package/service validation. |

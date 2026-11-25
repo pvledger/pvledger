@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added nFPM build targets for Debian `.deb`, CentOS/Rocky Linux/Red Hat-compatible `.rpm`, and Arch/Artix/Manjaro `.pkg.tar.zst` packages. Native installations default to `/opt/pvledger`; generated packages are written to `build/packages/`.
+- Added a SysV init template with start, stop, restart and status commands, privilege dropping, terminal detachment and stale PID protection, plus a companion systemd unit. Service activation remains an explicit operator action.
+- Native packages create a dedicated `pvledger` account and preserve configuration and financial data in `/opt/pvledger/var` across upgrades, removal and Debian purge.
+- Added package inspection and SysV lifecycle tests, CI package artifacts and Debian install/upgrade/purge checks. Updated deployment documentation and application specification v0.11.
 - Added **Reports → Cash flow estimates** for all accessible current accounts or one selected account. Daily totals show income, expenses and net cash flow by currency. The report uses actual entries through today (UTC) and outstanding plans starting tomorrow.
 - Added OpenDocument (.ods) and Excel (.xlsx) downloads to the Export wizard with the same datasets, filters, column selection and preview as CSV. Workbooks preserve literal text, numeric amounts and large identifiers.
 - Added a complete SQLite backup download and restore form under **Administration → Settings**. An administrator can replace the ledger from a validated backup of up to 64 MiB. After recovery, users sign in with credentials from the backup.

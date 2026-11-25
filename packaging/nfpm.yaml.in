@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=https://nfpm.goreleaser.com/schema.json
+name: pvledger
+arch: amd64
+platform: linux
+version: "@PROJECT_VERSION@"
+release: "@PVLEDGER_PACKAGE_RELEASE@"
+maintainer: Vadim Prishlyak <pvadimr@pvadimr.com>
+description: |-
+  Private, self-hosted personal finance ledger.
+  A static web server with local SQLite storage and a browser interface.
+homepage: https://github.com/pvadimr/pvledger
+license: AGPL-3.0-only
+section: misc
+priority: optional
+contents:
+  - src: "${PVLEDGER_PACKAGE_STAGE}/opt/pvledger/"
+    dst: /opt/pvledger
+    type: tree
+  - src: "@package_dir@/pvledger.init"
+    dst: /etc/init.d/pvledger
+    type: config|noreplace
+    file_info:
+      mode: 0755
+  - src: "@package_dir@/pvledger.service"
+    dst: /usr/lib/systemd/system/pvledger.service
+    file_info:
+      mode: 0644
+scripts:
+  postinstall: packaging/scripts/postinstall.sh
+  preremove: packaging/scripts/preremove.sh
+  postremove: packaging/scripts/postremove.sh
+overrides:
+  deb:
+    depends: [passwd, util-linux, coreutils, awk]
+  rpm:
+    depends: [shadow-utils, util-linux, coreutils, gawk]
+  archlinux:
+    depends: [shadow, util-linux, coreutils, gawk]
+archlinux:
+  packager: Vadim Prishlyak <pvadimr@pvadimr.com>
+  scripts:
+    postupgrade: packaging/scripts/postinstall.sh

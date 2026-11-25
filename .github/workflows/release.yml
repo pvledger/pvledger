@@ -5,9 +5,34 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libssl-dev libjsoncpp-dev bubblewrap
-      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPVLEDGER_STATIC=ON -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/pvledger"
+      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libssl-dev libjsoncpp-dev bubblewrap libarchive-tools rpm
+      - name: Install nFPM 2.49.0
+        run: |
+          mkdir -p "$RUNNER_TEMP/nfpm"
+          cd "$RUNNER_TEMP/nfpm"
+          curl -fsSLO https://github.com/goreleaser/nfpm/releases/download/v2.49.0/nfpm_2.49.0_Linux_x86_64.tar.gz
+          curl -fsSLO https://github.com/goreleaser/nfpm/releases/download/v2.49.0/checksums.txt
+          grep ' nfpm_2.49.0_Linux_x86_64.tar.gz$' checksums.txt | sha256sum --check
+          tar -xzf nfpm_2.49.0_Linux_x86_64.tar.gz nfpm
+          echo "$RUNNER_TEMP/nfpm" >> "$GITHUB_PATH"
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPVLEDGER_STATIC=ON -DCMAKE_INSTALL_PREFIX=/opt/pvledger
       - run: cmake --build build --parallel 2
       - run: ctest --test-dir build --output-on-failure
-      - run: cmake --install build
-      - run: sudo python3 tests/minimal_runtime.py "$RUNNER_TEMP/pvledger"
+      - run: sudo python3 tests/service.py build/pvledger build/packaging/pvledger.init
+      - run: DESTDIR="$RUNNER_TEMP/install" cmake --install build --component PVLedger
+      - run: sudo python3 tests/minimal_runtime.py "$RUNNER_TEMP/install/opt/pvledger"
+      - run: cmake --build build --target packages
+      - run: python3 tests/packages.py build/packages
+      - name: Verify Debian install, upgrade and data retention on purge
+        run: |
+          sudo dpkg --install build/packages/*.deb
+          sudo -u pvledger sh -c 'printf "operator configuration\n" > /opt/pvledger/var/config.yaml; mkdir -p /opt/pvledger/var/data; printf "retained data\n" > /opt/pvledger/var/data/retention-test'
+          sudo dpkg --install build/packages/*.deb
+          sudo grep -qx 'operator configuration' /opt/pvledger/var/config.yaml
+          sudo dpkg --purge pvledger
+          sudo grep -qx 'operator configuration' /opt/pvledger/var/config.yaml
+          sudo grep -qx 'retained data' /opt/pvledger/var/data/retention-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pvledger-linux-packages
+          path: build/packages/*
