@@ -1,0 +1,10 @@
+<nav aria-label="{{ 'Язык документации' if language == 'ru' else 'Documentation language' }}">
+  {% set page = pagename if pagename != 'search' else 'index' %}
+  {% if language == 'ru' %}
+    <a href="../en/{{ page }}.html" hreflang="en" lang="en">English</a> ·
+    <span aria-current="true" lang="ru">Русский</span>
+  {% else %}
+    <span aria-current="true" lang="en">English</span> ·
+    <a href="../ru/{{ page }}.html" hreflang="ru" lang="ru">Русский</a>
+  {% endif %}
+</nav>

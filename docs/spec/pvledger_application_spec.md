@@ -1,6 +1,6 @@
 # PVLedger — Web Application Specification
 
-**Document version:** Draft v0.11\
+**Document version:** Draft v0.12\
 **Date:** 2026-11-25\
 **Product:** PVLedger  
 **Application release:** 0.1.1\
@@ -8,7 +8,7 @@
 **Document status:** Working draft — requirements and proposed architecture; not a final implementation contract  
 **Database reference:** SQLite schema v0.7.2. [Database specification](pvledger_database_spec.md)\
 **Target release:** v1 (SQLite-first)  
-**Scope of this revision:** SysV service template and nFPM packaging for Debian, RPM and Arch-family systems under `/opt/pvledger`, with persistent service data and release validation. Database schema and application version are unchanged.
+**Scope of this revision:** English and Russian Sphinx manuals with screenshots, build and deployment instructions, reference links, a project progress summary and static-site publishing instructions.
 
 > **Reading guide:** **Required** means supplied by the project owner or established in the attached database specification. **Proposed** is a starting implementation choice that may be changed. **Later** means explicitly deferred or not yet specified. The database specification and its source SQL govern the *existing* schema; this document must not be read as permission to modify it silently.
 
@@ -161,6 +161,7 @@ PVLedger is offered under AGPL-3.0-only or a separate written commercial license
 | APP-063 | Supply a SysV init script template for running PVLedger as a service with start, stop, restart and status actions | Required by owner, v0.11 | Must |
 | APP-064 | Use nFPM to package the built application as Debian `.deb`, RPM for CentOS/Rocky Linux/Red Hat-compatible systems, and Arch/Artix/Manjaro `.pkg.tar.zst` | Required by owner, v0.11 | Must |
 | APP-065 | Install the application and bundled assets under `/opt/pvledger`; preserve operator configuration and financial data across package upgrades and removal | Required location; data-preservation safeguard, v0.11 | Must |
+| APP-066 | Maintain English and Russian Sphinx manuals in `docs/doc/` with screenshots, build and deployment instructions, user workflows, references and project progress. Generate standalone static HTML for future publication. | Required by owner, v0.12 | Must |
 
 ### 3.1 Main UI pages and modules
 
@@ -837,6 +838,9 @@ pvledger/
 │   ├── reports.js                 # Proposed chart rendering
 │   └── app.js
 ├── docs/                          # Documentation
+│   ├── doc/                       # English and Russian Sphinx manuals
+│   │   ├── en/                    # English pages and screenshots
+│   │   └── ru/                    # Russian pages and screenshots
 │   ├── spec/                      # Application, database and related specifications
 │   │   ├── application_spec.md
 │   │   └── database_spec.md
@@ -879,9 +883,10 @@ The root `Dockerfile` and `docker-compose.yaml` are **part of the project struct
 | `templates/` | Server-rendered HTML templates and reusable page/layout fragments. C++ rendering code belongs in `src/`, not here. |
 | `js/` | Client-side JavaScript, including the required menu generator (`js/menu.js`). Do not put the canonical JavaScript source under `web/static/js/`. |
 | `docs/` | Documentation root (guides, API material, developer notes). |
+| `docs/doc/` | Sphinx sources, screenshots, shared configuration and build files for the English and Russian manuals. |
 | `docs/spec/` | Application specification, database specification and future architecture/interface specifications. The filenames shown above are proposed. |
 | `LICENSE` | Complete GNU Affero General Public License version 3 text. |
-| `README.md` | Root-level overview; prerequisites; native CMake build; configuration; starting the application; optional Docker instructions; links to `docs/spec/`. |
+| `README.md` | Root-level overview, prerequisites, CMake build, configuration, startup, optional Docker instructions, and links to the manuals and specifications. |
 | `Dockerfile` | Reproducible, optional Docker image build for PVLedger and its required runtime assets. |
 | `docker-compose.yaml` | Optional container deployment definition with config/database persistence and a configurable web port. |
 | `packaging/` | nFPM YAML template, SysV init template, companion systemd unit and package lifecycle hooks. |
@@ -951,6 +956,12 @@ The exact service configuration, image base, volume mappings, listening address,
 - **Validation:** inspect all three generated artifacts for metadata, payload, permissions, licenses and static linkage; run CLI checks after extraction. Exercise real SysV start/status/restart/stop, privilege dropping, repeated actions, unrelated stale PID safety and failed startup in a temporary directory. Run the existing integration and minimal-runtime checks. CI publishes the validated artifacts. Native installation on every target distribution remains a release-platform check separate from archive validation.
 
 ---
+
+### 13.8 Documentation and publishing
+
+The [English manual](../doc/en/index.rst) and [Russian manual](../doc/ru/index.rst) cover source builds, native packages, Docker, first-run setup, daily ledger workflows, backups and release progress. Screenshots use demonstration data. The manuals link to the API contract, OpenAPI definition, specifications, changelog and license.
+
+Sphinx generates both editions under `docs/doc/_build/html/` with a language chooser, links between corresponding pages and search in each language. The complete HTML directory can be deployed to a standalone static host. The [English publishing guide](../doc/en/publishing.rst) and [Russian publishing guide](../doc/ru/publishing.rst) document the build, local preview and optional canonical URL for deployment.
 
 ## 14. Non-functional requirements
 
@@ -1088,9 +1099,10 @@ A first usable release is ready for review when all of the following are demonst
 - [ ] Cash flow estimates switch from actuals to plans at tomorrow’s UTC midnight and respect account ownership and currency.
 - [ ] Database downloads and both restore forms round-trip balances, history, settings and users. A failed restore preserves the live ledger.
 - [ ] Restore/upgrade tests preserve an existing database; errors are logged without secrets.
-- [ ] Required repository paths exist: `src/`, `src/headers/`, `templates/`, `js/`, `docs/`, `docs/spec/`, root `README.md`, `Dockerfile` and `docker-compose.yaml`.
+- [ ] Required repository paths exist: `src/`, `src/headers/`, `templates/`, `js/`, `docs/`, `docs/doc/`, `docs/spec/`, root `README.md`, `Dockerfile` and `docker-compose.yaml`.
 - [ ] CMake builds a **statically linked core `pvledger` release executable** without Docker, verified on each supported target; optional Docker build/Compose deployment persists SQLite data and does not require committing secrets. Any plugin dynamic-loading exception is documented.
 - [ ] Source, build steps, configuration reference and extension guidelines are documented.
+- [ ] Both Sphinx editions include screenshots, project progress and reference links. The generated static site supports switching languages and searching each edition.
 - [ ] nFPM builds installable Debian, RPM and Arch-family packages for Linux x86-64, with application files under `/opt/pvledger`, declared service-tool dependencies and retained mutable data.
 - [ ] The SysV init template supports start/stop/restart/status as an unprivileged service account and rejects stale PIDs. Service activation, upgrades, removal and systemd/Artix integration limitations are documented and validated.
 
@@ -1128,3 +1140,4 @@ The schema and database specification are maintained in the repository. [SQLite 
 | v0.9 | 2026-11-24 | Specified actual expense and income posting, current and savings balance history capture, atomic imports and the v0.7.2 database upgrade. |
 | v0.10 | 2026-11-24 | Added cash flow estimates, ODS and XLSX exports, administrator and first-run backup recovery, and dual licensing. |
 | v0.11 | 2026-11-25 | Added SysV service template, companion systemd unit, nFPM Debian/RPM/Arch packaging under `/opt/pvledger`, persistent service data, lifecycle rules and package/service validation. |
+| v0.12 | 2026-11-25 | Documented the English and Russian Sphinx manuals, their screenshots and reference material, and the standalone static-site build. |
