@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <cstdio>
 #include <ctime>
 #include <set>
 
@@ -106,7 +107,24 @@ std::string exportDate(const Value& value, const char* format) {
     const auto seconds = static_cast<std::time_t>(value.asInt64());
     std::tm utc{};
     char date[32];
+#ifdef _WIN32
+    // The Windows CRT only accepts a subset of the supported years. Shift by
+    // Gregorian 400-year cycles and expand the year before calling strftime.
+    require(seconds >= -62135596800LL && seconds <= 253402300799LL);
+    constexpr std::time_t cycle = 146097LL * 86400;
+    constexpr std::time_t year2000 = 946684800;
+    const auto offset = seconds - year2000;
+    const auto cycles = offset / cycle - (offset % cycle < 0 ? 1 : 0);
+    const auto normalized = seconds - cycles * cycle;
+    require(gmtime_s(&utc, &normalized) == 0);
+    char year[5];
+    std::snprintf(year, sizeof(year), "%04d", utc.tm_year + 1900 + static_cast<int>(cycles) * 400);
+    std::string expanded(format);
+    expanded.replace(expanded.find("%04Y"), 4, year);
+    require(std::strftime(date, sizeof(date), expanded.c_str(), &utc));
+#else
     require(gmtime_r(&seconds, &utc) && std::strftime(date, sizeof(date), format, &utc));
+#endif
     return date;
 }
 

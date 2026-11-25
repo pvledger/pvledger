@@ -8,24 +8,31 @@
 #include <cctype>
 #include <fstream>
 #include <sstream>
-#include <sys/stat.h>
+#ifdef _WIN32
+#include "windows_runtime.hpp"
+#else
 #include <unistd.h>
+#endif
 
 namespace pvl {
 std::string readFile(const fs::path& path) {
     std::ifstream input(path, std::ios::binary);
-    if (!input) throw std::runtime_error("Cannot read " + path.string());
+    if (!input) throw std::runtime_error("Cannot read " + path.u8string());
     std::ostringstream buffer;
     buffer << input.rdbuf();
-    if (input.bad()) throw std::runtime_error("Cannot read " + path.string());
+    if (input.bad()) throw std::runtime_error("Cannot read " + path.u8string());
     return buffer.str();
 }
 
-Config Config::load(const fs::path& path) {
+Config Config::load(const fs::path& path, const std::string* contents) {
     Config result;
     result.file = fs::absolute(path).lexically_normal();
     std::error_code executableError;
+#ifdef _WIN32
+    const auto executable = win::executablePath();
+#else
     const auto executable = fs::read_symlink("/proc/self/exe", executableError);
+#endif
     const auto installedAssets = (executable.parent_path() / PVL_DATA).lexically_normal();
     result.assets = !executableError && fs::exists(installedAssets / "templates/layout.html") ?
                     installedAssets : fs::path(PVL_SOURCE);
@@ -34,14 +41,18 @@ Config Config::load(const fs::path& path) {
     result.themes = result.assets / "themes";
     const auto base = result.file.parent_path();
     result.database = base / "data/pvledger.sqlite";
-    result.missing = !fs::exists(result.file);
+    result.missing = !contents && !fs::exists(result.file);
     if (result.missing) {
-        if (!fs::is_directory(base) || access(base.c_str(), W_OK) != 0)
+        if (!fs::is_directory(base)
+#ifndef _WIN32
+            || access(base.c_str(), W_OK) != 0
+#endif
+        )
             throw std::runtime_error("Configuration directory must exist and be writable");
         return result;
     }
     try {
-        const auto yaml = YAML::LoadFile(result.file.string());
+        const auto yaml = YAML::Load(contents ? *contents : readFile(result.file));
         const auto app = yaml["app"];
         const auto database = yaml["database"];
         const auto paths = yaml["paths"];
@@ -50,7 +61,7 @@ Config Config::load(const fs::path& path) {
         const auto resolve = [&base](const YAML::Node& value) {
             const auto pathValue = value.as<std::string>();
             if (pathValue.empty()) throw std::runtime_error("Configuration paths must be nonempty");
-            return (base / pathValue).lexically_normal();
+            return (base / fs::u8path(pathValue)).lexically_normal();
         };
         result.database = resolve(database["sqlite"]["path"]);
         result.host = app["host"].as<std::string>("127.0.0.1");
@@ -65,32 +76,62 @@ Config Config::load(const fs::path& path) {
         throw std::runtime_error("Invalid configuration YAML or missing required keys");
     }
     for (const auto& directory : {result.languages, result.plugins, result.themes})
-        if (!fs::is_directory(directory)) throw std::runtime_error("Missing directory: " + directory.string());
+        if (!fs::is_directory(directory)) throw std::runtime_error("Missing directory: " + directory.u8string());
     return result;
 }
 
-void Config::save() const {
+std::string Config::toYaml() const {
     YAML::Node yaml;
     yaml["app"]["host"] = host;
     yaml["app"]["port"] = port;
     yaml["app"]["secure_cookie"] = secureCookie;
     yaml["database"]["engine"] = "sqlite";
-    yaml["database"]["sqlite"]["path"] = database.string();
-    yaml["paths"]["languages"] = languages.string();
-    yaml["paths"]["plugins"] = plugins.string();
-    yaml["paths"]["themes"] = themes.string();
-    const auto temporary = file.string() + "." + token();
+    yaml["database"]["sqlite"]["path"] = database.u8string();
+    yaml["paths"]["languages"] = languages.u8string();
+    yaml["paths"]["plugins"] = plugins.u8string();
+    yaml["paths"]["themes"] = themes.u8string();
+    std::ostringstream output;
+    output << yaml << '\n';
+    return output.str();
+}
+
+static void writeConfig(const fs::path& file, const std::string& contents, [[maybe_unused]] bool replace = true) {
+    auto temporary = file;
+    temporary += "." + token();
     try {
-        std::ofstream output(temporary);
+        std::ofstream output(temporary, std::ios::binary);
         output.exceptions(std::ios::badbit | std::ios::failbit);
-        output << yaml << '\n';
+        output << contents;
         output.close();
+#ifdef _WIN32
+        const DWORD flags = replace ? MOVEFILE_REPLACE_EXISTING : 0;
+        if (!MoveFileExW(temporary.c_str(), file.c_str(), flags)) {
+            const auto error = GetLastError();
+            if (replace || (error != ERROR_ALREADY_EXISTS && error != ERROR_FILE_EXISTS))
+                throw std::system_error(error, std::system_category(), "Cannot save config.yaml");
+            fs::remove(temporary);
+        }
+#else
         fs::rename(temporary, file);
+#endif
     } catch (...) {
         std::error_code ignored;
         fs::remove(temporary, ignored);
         throw;
     }
+}
+
+void Config::save() const {
+#ifdef _WIN32
+    // Setup may finish after the helper has saved settings for the next start.
+    writeConfig(file, toYaml(), !missing);
+#else
+    writeConfig(file, toYaml());
+#endif
+}
+
+void Config::saveYaml(const std::string& contents) const {
+    writeConfig(file, contents);
 }
 
 std::string json(const Value& value) {

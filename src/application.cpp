@@ -5,7 +5,11 @@
 #include <ctime>
 #include <iostream>
 #include <sstream>
+#ifdef _WIN32
+#include "windows_runtime.hpp"
+#else
 #include <sys/utsname.h>
+#endif
 
 namespace pvl {
 const std::vector<Resource> resources = {
@@ -359,10 +363,10 @@ Application::Application(Config settings) : config(std::move(settings)), setupTo
     prepareDatabase(*store, schema);
     for (const auto& entry : fs::directory_iterator(config.languages)) {
         const auto path = entry.path();
-        const auto key = path.stem().string();
+        const auto key = path.stem().u8string();
         if (path.extension() != ".yaml" || !identifier(key) || !contained(config.languages, path)) continue;
         Params pack;
-        flatten(YAML::LoadFile(path.string()), "", pack);
+        flatten(YAML::Load(readFile(path)), "", pack);
         if (pack["meta.locale"] != key || pack["meta.name"].empty())
             throw std::runtime_error("Invalid locale metadata for " + key);
         localeNames[key] = pack["meta.name"];
@@ -370,7 +374,7 @@ Application::Application(Config settings) : config(std::move(settings)), setupTo
     }
     if (!locales.count("en_US")) throw std::runtime_error("Required en_US locale is missing");
     for (const auto& entry : fs::directory_iterator(config.themes)) {
-        const auto name = entry.path().filename().string();
+        const auto name = entry.path().filename().u8string();
         const auto css = entry.path() / "style.css";
         if (identifier(name) && contained(config.themes, css)) themes[name] = css;
     }
@@ -397,7 +401,7 @@ void Application::discoverPlugins() {
         const auto manifest = entry.path() / "plugin.yaml";
         if (!contained(config.plugins, manifest)) continue;
         try {
-            const auto yaml = YAML::LoadFile(manifest.string());
+            const auto yaml = YAML::Load(readFile(manifest));
             const auto id = yaml["id"].as<std::string>();
             const auto name = yaml["name"].as<std::string>();
             const auto label = yaml["menu_label"].as<std::string>();
@@ -570,7 +574,7 @@ Response Application::dispatch(const Request& request) {
             auto values = translations;
             values["setup_token"] = setupToken;
             values["locale_id"] = locale;
-            values["database_path"] = config.database.string();
+            values["database_path"] = config.database.u8string();
             values["port"] = std::to_string(config.port);
             return page(tr("setup"), render(setupForm, values,
                         {{"languages", languageOptions()}, {"themes", themeOptions()}, {"currencies", currencyOptions("")},
@@ -764,10 +768,22 @@ Response Application::dispatch(const Request& request) {
     }
     if (get && path == "/about") {
         auto values = translations;
+#ifdef _WIN32
+        SYSTEM_INFO system{};
+        GetNativeSystemInfo(&system);
+        char build[32]{};
+        DWORD size = sizeof(build);
+        const auto status = RegGetValueA(HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+                                         "CurrentBuildNumber", RRF_RT_REG_SZ, nullptr, build, &size);
+        values["server_os"] = status == ERROR_SUCCESS ? std::string("Windows build ") + build : "Windows";
+        values["server_architecture"] = system.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_ARM64 ? "arm64" :
+            system.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ? "x86_64" : "x86";
+#else
         struct utsname system{};
         const bool hasSystem = uname(&system) == 0;
         values["server_os"] = hasSystem ? std::string(system.sysname) + " " + system.release : "—";
         values["server_architecture"] = hasSystem ? system.machine : "—";
+#endif
         values["sqlite_runtime"] = single(store->query("SELECT sqlite_version() AS version"))["version"].asString();
         values["db_schema"] = settings["db_version"].asString();
         values["app_version"] = PVL_VERSION;

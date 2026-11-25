@@ -29,8 +29,10 @@ struct Config {
     int port = 8080;
     bool secureCookie = false;
     bool missing = false;
-    static Config load(const fs::path& path);
+    static Config load(const fs::path& path, const std::string* contents = nullptr);
+    std::string toYaml() const;
     void save() const;
+    void saveYaml(const std::string& contents) const;
 };
 
 std::string readFile(const fs::path& path);

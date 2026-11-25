@@ -1,8 +1,11 @@
 Project progress
 ================
 
-Unreleased
-----------
+Version 0.1.2 (25 November 2026)
+--------------------------------
+
+* Windows tray helper, editable YAML configuration and a per-user SQLite ledger.
+* NSIS installers for Windows x64, built with Visual Studio or MinGW-w64.
 
 * Linux packages for Debian, RPM-based and Arch-based systems, with systemd and
   SysV init integration and a dedicated service account.

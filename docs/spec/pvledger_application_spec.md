@@ -1,14 +1,14 @@
 # PVLedger — Web Application Specification
 
-**Document version:** Draft v0.12\
+**Document version:** Draft v0.13\
 **Date:** 2026-11-25\
 **Product:** PVLedger  
-**Application release:** 0.1.1\
+**Application release:** 0.1.2\
 **Slogan:** “Manage your finances privately”\
 **Document status:** Working draft — requirements and proposed architecture; not a final implementation contract  
 **Database reference:** SQLite schema v0.7.2. [Database specification](pvledger_database_spec.md)\
 **Target release:** v1 (SQLite-first)  
-**Scope of this revision:** English and Russian Sphinx manuals with screenshots, build and deployment instructions, reference links, a project progress summary and static-site publishing instructions.
+**Scope of this revision:** Windows tray helper, Visual Studio and Linux cross-builds, NSIS packaging, and standard-user operation with per-user configuration and ledger data.
 
 > **Reading guide:** **Required** means supplied by the project owner or established in the attached database specification. **Proposed** is a starting implementation choice that may be changed. **Later** means explicitly deferred or not yet specified. The database specification and its source SQL govern the *existing* schema; this document must not be read as permission to modify it silently.
 
@@ -79,11 +79,11 @@ PVLedger is offered under AGPL-3.0-only or a separate written commercial license
 | File configuration | **YAML** | `config.yaml` |
 | Themes | CSS and related assets | Theme selected in database, resources loaded from themes path |
 
-**Proposed technical baseline:** C++17 or newer, with dependency versions pinned and validated by CI. **Required release packaging:** link the `pvledger` executable and its required core dependencies statically on supported release targets; exact toolchain and compatibility tests are specified in §13.4–13.6. Do not assume that PostgreSQL and MariaDB/MySQL share identical SQL or Oat++ adapters. Oat++ documents `oatpp-sqlite` and `oatpp-postgresql`; a MariaDB/MySQL data-access strategy still needs to be selected.
+**Proposed technical baseline:** C++17 or newer, with dependency versions pinned and validated by CI. **Required release packaging:** link the `pvledger` executable and its required core dependencies statically on supported release targets; toolchain and compatibility requirements are specified in §13.4–13.9. Do not assume that PostgreSQL and MariaDB/MySQL share identical SQL or Oat++ adapters. Oat++ documents `oatpp-sqlite` and `oatpp-postgresql`; a MariaDB/MySQL data-access strategy still needs to be selected.
 
 ### 2.2 Runtime deployment (proposed)
 
-- Run as a single HTTP server process on Linux initially; cross-platform support may be added or validated separately.
+- Run the same HTTP server on Linux x86-64 and Windows 10 or 11 x64. Windows also provides a notification-area helper.
 - Bind to `127.0.0.1` by default. Configurable host exposure can be introduced explicitly for trusted networks.
 - Serve the UI and the JSON API from the same origin.
 - If the instance is reachable across a network, deploy HTTPS through a reverse proxy or an explicitly configured TLS server.
@@ -152,7 +152,7 @@ PVLedger is offered under AGPL-3.0-only or a separate written commercial license
 | APP-054 | Initialize currency selectors from `pvl_settings.default_currency` when creating records, mapping imports or opening currency filters except the all-currency estimates report. Preserve stored currency when editing records | Required by owner, v0.7 | Must |
 | APP-055 | Supply a selectable dark theme alongside the light theme | Required by owner, v0.7 | Must |
 | APP-056 | Add QIF, OFX and QFX transaction downloads to the Export Wizard alongside CSV | Required by owner, v0.7 | Must |
-| APP-057 | Display “Manage your finances privately” during setup and on the About page. Show application version 0.1.1 on About, in the CLI and in the version API | Required by owner, v0.8 | Must |
+| APP-057 | Display “Manage your finances privately” during setup and on the About page. Show the application release version on About, in the CLI and in the version API | Required by owner, v0.8 | Must |
 | APP-058 | Show system information on About and open its contact, source and license links in a new tab or window | Required by owner, v0.8 | Must |
 | APP-059 | Add Spending over time under Reports, with UTC daily totals of actual expenses by currency, a chart and a matching table | Required by owner, v0.8 | Must |
 | APP-060 | Report daily actual and estimated cash flow across all authorized current accounts or one selected account | Required by owner, v0.10 | Must |
@@ -162,6 +162,10 @@ PVLedger is offered under AGPL-3.0-only or a separate written commercial license
 | APP-064 | Use nFPM to package the built application as Debian `.deb`, RPM for CentOS/Rocky Linux/Red Hat-compatible systems, and Arch/Artix/Manjaro `.pkg.tar.zst` | Required by owner, v0.11 | Must |
 | APP-065 | Install the application and bundled assets under `/opt/pvledger`; preserve operator configuration and financial data across package upgrades and removal | Required location; data-preservation safeguard, v0.11 | Must |
 | APP-066 | Maintain English and Russian Sphinx manuals in `docs/doc/` with screenshots, build and deployment instructions, user workflows, references and project progress. Generate standalone static HTML for future publication. | Required by owner, v0.12 | Must |
+| APP-067 | Start the Windows helper in the notification area. Provide Open PVLedger, dynamic Start/Stop, Configuration, About and Exit. | Required by owner, v0.13 | Must |
+| APP-068 | Edit `config.yaml` from the helper with OK, Cancel and Apply. Validate changes before saving. | Required by owner, v0.13 | Must |
+| APP-069 | Build Windows x64 with Visual Studio or Linux-hosted MinGW-w64 and package both executables and required resources using NSIS. | Required by owner, v0.13 | Must |
+| APP-070 | Install by default to `C:\pvledger`, create Start menu entries and support uninstall. Standard users can run the installed application. | Required by owner, v0.13 | Must |
 
 ### 3.1 Main UI pages and modules
 
@@ -179,7 +183,7 @@ PVLedger is offered under AGPL-3.0-only or a separate written commercial license
 | Reports | Category breakdowns, daily spending, cash flow estimates and balance history with date, account and currency filters and accessible tables | Actual and planned entries and recorded current/savings balance histories |
 | System | Login, first-run setup, help/about, error pages | Application services |
 
-The About page retains the application name, slogan, and version. It displays `(c) 2026 Vadim Prishlyak`, the email address `pvadimr@pvadimr.com` as a `mailto:` link, the source repository URL `https://forge.pvadimr.com/pvledger/pvledger` as an HTTPS link, and the license name GNU Affero General Public License v3.0 (AGPL-3.0-only) linked to the GNU license text. A separate email link requests commercial licensing terms. Each link requests a new browser tab or window. The browser or operating system handles the email link using the configured mail application. A System information section lists the server OS and kernel release, CPU architecture, running SQLite library version and database schema version from `pvl_settings.db_version`.
+The About page retains the application name, slogan, and version. It displays `(c) 2026 Vadim Prishlyak`, the email address `pvadimr@pvadimr.com` as a `mailto:` link, the source repository URL `https://forge.pvadimr.com/pvledger/pvledger` as an HTTPS link, and the license name GNU Affero General Public License v3.0 (AGPL-3.0-only) linked to the GNU license text. A separate email link requests commercial licensing terms. Each link requests a new browser tab or window. The browser or operating system handles the email link using the configured mail application. A System information section lists the server OS and Linux kernel release or Windows build number, CPU architecture, running SQLite library version and database schema version from `pvl_settings.db_version`.
 
 **Required navigation placement:** a **vertical sidebar on the left** on desktop/tablet layouts. **Proposed menu order:** Dashboard · Accounts (Current / Savings / Credit; Balance History on Current/Savings account detail) · Income (Actual / Planned) · Expenses (Actual / Planned / Recurring / Categories) · Debts · Taxes · Banks · **Reports** (Expense Breakdown / Spending over time / Cash flow estimates / Income Overview / Balance History) · **Data** (Import / Export) · Administration (Users / Plugins / Settings) · Reference Data (Countries / Currencies) · About. Child items should expand beneath the parent item. On narrow screens, preserve the menu as a left-origin sliding drawer opened by an accessible menu control; do not change it to a top horizontal desktop menu.
 
@@ -919,7 +923,7 @@ These commands are implemented by the repository's `CMakeLists.txt`.
 
 ### 13.5 Static linking and plugin compatibility
 
-**Required release artifact:** `pvledger` is a statically linked core C++ executable on each declared supported platform. Core Oat++/HTTP, SQLite, YAML and necessary runtime libraries must be included in the executable rather than depending on shared `.so`/`.dylib`/`.dll` versions at launch. In a Linux release build, the selected toolchain should make the core binary self-contained; a musl-based toolchain is a **proposed** strategy if full static linking is required. Do not assume fully static glibc networking/name-service features are automatically portable or safe in every environment.
+**Required release artifact:** `pvledger` is a statically linked core C++ executable on each declared supported platform. Statically link Oat++/HTTP, SQLite, YAML and the other application libraries into the executable. Windows binaries may import DLLs supplied by the supported Windows versions. In a Linux release build, the selected toolchain should make the core binary self-contained; a musl-based toolchain is a **proposed** strategy if full static linking is required. Do not assume fully static glibc networking/name-service features are automatically portable or safe in every environment.
 
 **Release verification (required):** CI must inspect the built binary with platform-appropriate tools (for example `file`, `readelf -d` and/or `ldd` on Linux) and run it in a minimal clean environment with `--help`, `--version`, SQLite initialization and a basic HTTP smoke test. Package templates, translations, themes and any plugins as **separate data/extension assets**; static linking does not embed those assets automatically.
 
@@ -959,9 +963,18 @@ The exact service configuration, image base, volume mappings, listening address,
 
 ### 13.8 Documentation and publishing
 
-The [English manual](../doc/en/index.rst) and [Russian manual](../doc/ru/index.rst) cover source builds, native packages, Docker, first-run setup, daily ledger workflows, backups and release progress. Screenshots use demonstration data. The manuals link to the API contract, OpenAPI definition, specifications, changelog and license.
+The [English manual](../doc/en/index.rst) and [Russian manual](../doc/ru/index.rst) cover source builds, Linux packages, Windows installation, Docker, first-run setup, daily ledger workflows, backups and release progress. Screenshots use demonstration data. The manuals link to the API contract, OpenAPI definition, specifications, changelog and license.
 
 Sphinx generates both editions under `docs/doc/_build/html/` with a language chooser, links between corresponding pages and search in each language. The complete HTML directory can be deployed to a standalone static host. The [English publishing guide](../doc/en/publishing.rst) and [Russian publishing guide](../doc/ru/publishing.rst) document the build, local preview and optional canonical URL for deployment.
+
+### 13.9 Windows tray and NSIS deployment
+
+- **Build:** CMake builds `pvledger.exe` and the Win32 notification-area application `pvledger-win-helper.exe` for Windows 10 or 11 x64. Support Visual Studio 2022 natively and MinGW-w64 with POSIX threads on Linux. The `package-windows` target stages both executables, SQL, templates, scripts, translations, themes, plugins and licenses, then generates an NSIS installer.
+- **Launch:** The helper starts with a notification-area icon and the server stopped. **Open PVLedger** starts the server if needed and opens the actual HTTP listening address in the default browser when it is ready. The Start/Stop item follows the server's state. **About** shows the helper's release version. **Exit** closes the helper and stops its managed server. The helper requests graceful shutdown and bounds the wait for it.
+- **Configuration:** **Configuration** displays the YAML file in an editor. **Apply** validates and saves the edited YAML and keeps the window open. **OK** saves and closes it. **Cancel** discards changes since the last save. Configuration changes take effect on the next server start.
+- **Installation:** The elevated installer defaults to `C:\pvledger`. It grants the built-in Users group read and execute access to the installation, creates the **PVLedger** and **Uninstall PVLedger** Start menu entries, and registers uninstall with Windows. The helper and managed server run with the user's existing privileges.
+- **State:** The helper uses `%LOCALAPPDATA%\PVLedger\config.yaml` and defaults to `%LOCALAPPDATA%\PVLedger\data\pvledger.sqlite`. The Windows user profile provides write access. Upgrades and uninstallation retain this state. Exit the helper before upgrading or removing it.
+- **Validation:** Inspect both MinGW executable architectures and DLL imports. On native Windows, run CLI and HTTP integration tests and verify installer and uninstaller exit status, the installed layout, Start menu entries, Users access rights and preserved state. In a desktop session exercise tray-only launch, browser opening, configuration buttons and validation, dynamic Start/Stop, About and Exit.
 
 ## 14. Non-functional requirements
 
@@ -1047,7 +1060,7 @@ These are **not** settled by the attached database contract or the original appl
 9. **`demo_mode`, `enabled`, and flags:** Define `0`/`1`/`NULL` semantics and demo-data behavior.
 10. **Currency conversion:** Whether to support exchange rates and consolidated multi-currency net worth (requires additional model).
 11. **Instance language:** One global language only (current schema) or per-user locale preference (requires new storage)?
-12. **Missing config and deployment:** Default config location, bootstrap port, binding behavior, HTTPS strategy and Linux/Windows/macOS support.
+12. **Missing config and deployment:** HTTPS deployment strategy and future macOS support.
 13. **MariaDB/MySQL integration:** Choose adapter/library, SQL dialect conventions, testing strategy and deployment support.
 14. **Plugin compatibility:** Stable API/ABI, signing/distribution policy, plugin permission model and restart requirements.
 15. **Settings details:** Should blank `instance_name` be `NULL` or `''`? Define valid `db_version` format.
@@ -1065,7 +1078,7 @@ These are **not** settled by the attached database contract or the original appl
 27. **Planned income lifecycle:** Whether planned income may be converted/reconciled to actual income, whether duplicates are allowed, and how a link would be represented (the schema has no planned→actual FK).
 28. **Income currency and ownership:** Confirm using the linked current account's currency, and how record access is constrained through `id_account` and account `id_user`.
 29. **Populated v0.7 upgrade:** Determine how historical dates will be recovered and how the two income tables can be safely rebuilt while preserving all records. Auto-migration must block until resolved.
-30. **Static build targets:** Confirm required OS/architecture combinations, toolchain (including libc on Linux), licensing and feasibility of static builds for each dependency.
+30. **Static build targets:** Confirm any future OS or architecture targets and their runtime and toolchain requirements.
 31. **Plugin loading versus static core:** Choose dynamic extension exception, built-in modules, or out-of-process plugin contract; define ABI/runtime compatibility and isolation.
 32. **Import semantics:** Decide which existing table(s) each supported source format may populate and how to handle OFX/QFX variants, duplicate identifiers, signed amounts, multi-currency data and income status fields.
 33. **Export compatibility:** Identify target financial applications for compatibility testing beyond the supported transaction export fields.
@@ -1104,6 +1117,7 @@ A first usable release is ready for review when all of the following are demonst
 - [ ] Source, build steps, configuration reference and extension guidelines are documented.
 - [ ] Both Sphinx editions include screenshots, project progress and reference links. The generated static site supports switching languages and searching each edition.
 - [ ] nFPM builds installable Debian, RPM and Arch-family packages for Linux x86-64, with application files under `/opt/pvledger`, declared service-tool dependencies and retained mutable data.
+- [ ] On Windows, the NSIS installer creates Start menu entries and permits standard-user launch. The tray helper opens the browser, manages its server and saves validated configuration. Uninstallation preserves Local AppData.
 - [ ] The SysV init template supports start/stop/restart/status as an unprivileged service account and rejects stale PIDs. Service activation, upgrades, removal and systemd/Artix integration limitations are documented and validated.
 
 ---
@@ -1141,3 +1155,4 @@ The schema and database specification are maintained in the repository. [SQLite 
 | v0.10 | 2026-11-24 | Added cash flow estimates, ODS and XLSX exports, administrator and first-run backup recovery, and dual licensing. |
 | v0.11 | 2026-11-25 | Added SysV service template, companion systemd unit, nFPM Debian/RPM/Arch packaging under `/opt/pvledger`, persistent service data, lifecycle rules and package/service validation. |
 | v0.12 | 2026-11-25 | Documented the English and Russian Sphinx manuals, their screenshots and reference material, and the standalone static-site build. |
+| v0.13 | 2026-11-25 | Specified the Windows tray helper, Visual Studio and Linux cross-builds, NSIS installation and uninstallation, and per-user mutable state. |

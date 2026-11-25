@@ -1,6 +1,10 @@
 # PVLedger changelog
 
-## Unreleased
+## 0.1.2 — 2026-11-25
+
+- Added a Windows tray helper that starts and stops PVLedger, opens the default browser when the server is ready, and edits `config.yaml` with validation.
+- Added x64 NSIS installers built with Visual Studio or Linux-hosted MinGW-w64. The installer provides Start menu shortcuts, standard-user runtime access, and uninstallation that preserves each user's configuration and ledger.
+- Added Windows build and installation checks in CI and updated the English and Russian manuals and application specification.
 
 - Added nFPM build targets for Debian `.deb`, CentOS/Rocky Linux/Red Hat-compatible `.rpm`, and Arch/Artix/Manjaro `.pkg.tar.zst` packages. Native installations default to `/opt/pvledger`; generated packages are written to `build/packages/`.
 - Added a SysV init template with start, stop, restart and status commands, privilege dropping, terminal detachment and stale PID protection, plus a companion systemd unit. Service activation remains an explicit operator action.

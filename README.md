@@ -12,7 +12,7 @@ The Sphinx manuals cover installation, everyday use, backups, and project progre
 
 ## Build and run
 
-The supported release target is Linux x86-64. Install a C++17 compiler with static C/C++ runtimes, binutils, CMake 3.18+, Git, pkg-config, and the SQLite, OpenSSL and JsonCpp development packages. The release needs the SQLite and libcrypto static archives. CMake uses an installed JsonCpp archive or builds JsonCpp 1.9.5. Python 3.8+ runs the HTTP integration suite. CTest also exercises the browser file parsers when it finds a Chromium-based browser. CMake uses installed Oat++ 1.3.0 and yaml-cpp 0.8 if available, or fetches the pinned release tags. It also builds miniz 3.0.2 for spreadsheet packaging.
+This section covers Linux x86-64. Install a C++17 compiler with static C/C++ runtimes, binutils, CMake 3.18+, Git, pkg-config, and the SQLite, OpenSSL and JsonCpp development packages. The release needs the SQLite and libcrypto static archives. CMake uses an installed JsonCpp archive or builds JsonCpp 1.9.5. Python 3.8+ runs the HTTP integration suite. CTest also exercises the browser file parsers when it finds a Chromium-based browser. CMake uses installed Oat++ 1.3.0 and yaml-cpp 0.8 if available, or fetches the pinned release tags. It also builds miniz 3.0.2 for spreadsheet packaging.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPVLEDGER_STATIC=ON
@@ -41,9 +41,9 @@ Artifacts appear in `build/packages/`. Select `package-deb`, `package-rpm`, or `
 
 | Systems | Package | Install command (substitute the generated filename) |
 | --- | --- | --- |
-| Debian / Ubuntu | `.deb` | `sudo apt install ./pvledger_0.1.1-1_amd64.deb` |
-| CentOS / Rocky Linux / Red Hat / compatible RPM systems | `.rpm` | `sudo dnf install ./pvledger-0.1.1-1.x86_64.rpm` |
-| Arch Linux / Artix / Manjaro | `.pkg.tar.zst` | `sudo pacman -U ./pvledger-0.1.1-1-x86_64.pkg.tar.zst` |
+| Debian / Ubuntu | `.deb` | `sudo apt install ./pvledger_0.1.2-1_amd64.deb` |
+| CentOS / Rocky Linux / Red Hat / compatible RPM systems | `.rpm` | `sudo dnf install ./pvledger-0.1.2-1.x86_64.rpm` |
+| Arch Linux / Artix / Manjaro | `.pkg.tar.zst` | `sudo pacman -U ./pvledger-0.1.2-1-x86_64.pkg.tar.zst` |
 
 Packages install `/opt/pvledger/bin/pvledger`, the resources under `/opt/pvledger/share/pvledger`, and service templates under `/opt/pvledger/share/doc/PVLedger`. They also install `/etc/init.d/pvledger` and `/usr/lib/systemd/system/pvledger.service` as service-manager integration files. Installation creates a system user/group named `pvledger` and a private, writable `/opt/pvledger/var` directory. The first run uses `/opt/pvledger/var/config.yaml` and `/opt/pvledger/var/data/pvledger.sqlite`; setup creates the configuration if it is missing. The service account cannot modify the executable or bundled assets.
 
@@ -71,6 +71,36 @@ For a manual CMake installation, run `sudo sh packaging/scripts/postinstall.sh` 
 Package installation does not start or enable the service automatically. Open `http://127.0.0.1:8080/setup` after starting, or use an SSH tunnel to that address on a remote server. Back up the ledger before upgrades, then restart the service explicitly after installing the new package. Existing configuration and SQLite files are not package payload and survive upgrades, removal and Debian purge; removal stops the service and retains the account and data. Delete retained financial data only when you intentionally want to discard it.
 
 Validate artifacts with `python3 tests/packages.py build/packages` (requires `bsdtar` and `readelf`; RPM metadata checks also use `rpm` when installed). `sudo python3 tests/service.py build/pvledger build/packaging/pvledger.init` tests the real SysV lifecycle and privilege dropping in a temporary directory without registering a host service. CI runs these checks and the existing application/minimal-runtime suites, then uploads all three packages.
+
+## Windows
+
+Run the x64 NSIS installer on Windows 10 or 11. The default installation folder
+is `C:\pvledger`. The installer requests elevation and grants standard users
+read and execute access to the installed files. Open **PVLedger** from the
+Start menu as your usual Windows user. The helper starts in the notification
+area, and **Open PVLedger** starts the server and opens the default browser
+when the server is ready. Use **Start PVLedger** or **Stop PVLedger** to
+manage the server, **Configuration** to edit the YAML, **About** to see the
+version, and **Exit** to close the helper and stop its server. The icon may
+appear in the notification area overflow.
+
+The helper uses `%LOCALAPPDATA%\PVLedger\config.yaml` and defaults to
+`%LOCALAPPDATA%\PVLedger\data\pvledger.sqlite`. **Apply** validates and
+saves the YAML and keeps the editor open. **OK** saves and closes the editor.
+**Cancel** discards edits made since the last save. Restart the server from
+the tray to activate saved changes. With a new profile, choose **Open PVLedger**
+and complete setup or restore a backup in the browser.
+
+Exit the helper before installing an update or removing PVLedger. Use
+**Uninstall PVLedger** in the Start menu or uninstall from **Settings → Apps**.
+Updates and removal preserve Local AppData files. If you move the installation
+and your saved YAML refers to the old asset paths, update them in **Configuration**.
+
+The CMake target `package-windows` builds `pvledger.exe` and
+`pvledger-win-helper.exe` and bundles both with the runtime assets in
+`build/windows/packages/pvledger-0.1.2-windows-x64-setup.exe`. Use Visual Studio
+2022 on Windows or MinGW-w64 on Linux. The Sphinx manual includes the
+[commands for both toolchains](docs/doc/en/build.rst#windows-builds).
 
 ## Configuration and access
 

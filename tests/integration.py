@@ -409,8 +409,12 @@ def exercise(directory):
         assert (f'<a href="https://www.gnu.org/licenses/agpl-3.0.html" {new_tab}>'
                 'GNU Affero General Public License v3.0 (AGPL-3.0-only)</a>') in about
         assert "<h2>System information</h2>" in about
-        assert f"<dd>{platform.system()} {platform.release()}</dd>" in about
-        assert f"<dd>{platform.machine()}</dd>" in about
+        if sys.platform == "win32":
+            assert re.search(r"<dd>Windows(?: build [0-9]+)?</dd>", about)
+            assert "<dd>x86_64</dd>" in about or "<dd>arm64</dd>" in about
+        else:
+            assert f"<dd>{platform.system()} {platform.release()}</dd>" in about
+            assert f"<dd>{platform.machine()}</dd>" in about
         assert re.search(r"<dt>SQLite version</dt><dd>\d+\.\d+\.\d+", about)
         assert "<dt>Database schema version</dt><dd>0.7.2</dd>" in about
         assert client.request("/assets/js/app.js").startswith('"use strict"')

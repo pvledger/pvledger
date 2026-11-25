@@ -7,8 +7,14 @@
 #include <csignal>
 #include <cstdlib>
 #include <iostream>
+#ifdef _WIN32
+#include "windows_runtime.hpp"
+#include <cstdint>
+#include <cwchar>
+#else
 #include <pthread.h>
 #include <sys/stat.h>
+#endif
 
 namespace {
 namespace http = oatpp::web::protocol::http;
@@ -125,7 +131,24 @@ struct Environment {
     ~Environment() { oatpp::base::Environment::destroy(); }
 };
 
+#ifdef _WIN32
+HANDLE consoleStop = nullptr;
+
+BOOL WINAPI stopFromConsole(DWORD control) {
+    if (control != CTRL_C_EVENT && control != CTRL_BREAK_EVENT) return FALSE;
+    return SetEvent(consoleStop);
+}
+
+void notifyHelper(HANDLE pipe, const std::string& message) {
+    if (!pipe) return;
+    DWORD written;
+    WriteFile(pipe, message.data(), static_cast<DWORD>(message.size()), &written, nullptr);
+}
+
+void run(pvl::Config config, HANDLE stop, HANDLE startup) {
+#else
 void run(pvl::Config config) {
+#endif
     Environment environment;
     pvl::Application application(config);
     const auto bind = application.ready() ? config.host : "127.0.0.1";
@@ -143,43 +166,80 @@ void run(pvl::Config config) {
     auto provider = oatpp::network::tcp::server::ConnectionProvider::createShared(
         {oatpp::String(listenAddress), static_cast<v_uint16>(config.port), oatpp::network::Address::IP_4});
 
+#ifndef _WIN32
     sigset_t signals;
     sigemptyset(&signals);
     sigaddset(&signals, SIGINT);
     sigaddset(&signals, SIGTERM);
     if (pthread_sigmask(SIG_BLOCK, &signals, nullptr) != 0)
         throw std::runtime_error("Cannot configure shutdown signals");
+#endif
     oatpp::network::Server server(provider, handler);
     server.run(true);
     std::cout << "PVLedger listening on " << listenAddress << ':' << config.port << std::endl;
+#ifdef _WIN32
+    notifyHelper(startup, "R" + listenAddress + ":" + std::to_string(config.port) + "\n");
+    WaitForSingleObject(stop, INFINITE);
+#else
     int signal = 0;
     sigwait(&signals, &signal);
+#endif
     server.stop();
     provider->stop();
     handler->stop();
 }
 }
 
+#ifdef _WIN32
+int wmain(int argc, wchar_t* argv[]) {
+    const std::wstring option = argc > 1 ? argv[1] : L"";
+    const auto help = L"--help", version = L"--version", configOption = L"-c";
+    const bool managed = argc == 6 && std::wstring(argv[3]) == pvl::win::helperHandles;
+#else
 int main(int argc, char* argv[]) {
-    if (argc == 2 && std::string(argv[1]) == "--help") {
+    const std::string option = argc > 1 ? argv[1] : "";
+    const auto help = "--help", version = "--version", configOption = "-c";
+    constexpr bool managed = false;
+#endif
+    if (argc == 2 && option == help) {
         std::cout << "Usage: pvledger -c <config.yaml>\n"
                      "       pvledger --help | --version\n"
                      "  -c <file>  Load configuration or start local setup.\n";
         return 0;
     }
-    if (argc == 2 && std::string(argv[1]) == "--version") {
+    if (argc == 2 && option == version) {
         std::cout << "PVLedger " PVL_VERSION "\n";
         return 0;
     }
-    if (argc != 3 || std::string(argv[1]) != "-c") {
+    if ((!managed && argc != 3) || option != configOption) {
         std::cerr << "Expected -c <config.yaml>. Use --help for usage.\n";
         return 2;
     }
+#ifdef _WIN32
+    const auto handle = [](const wchar_t* value) -> HANDLE {
+        return reinterpret_cast<HANDLE>(static_cast<std::uintptr_t>(std::wcstoull(value, nullptr, 10)));
+    };
+    pvl::win::Handle stop(managed ? handle(argv[4]) : CreateEventW(nullptr, TRUE, FALSE, nullptr));
+    pvl::win::Handle startup(managed ? handle(argv[5]) : nullptr);
+#else
     umask(0077);
+#endif
     try {
+#ifdef _WIN32
+        pvl::win::check(bool(stop), "Cannot create shutdown event");
+        if (!managed) {
+            consoleStop = stop.get();
+            pvl::win::check(SetConsoleCtrlHandler(stopFromConsole, TRUE), "Cannot configure console shutdown");
+        }
+        run(pvl::Config::load(argv[2]), stop.get(), startup.get());
+#else
         run(pvl::Config::load(argv[2]));
+#endif
         return 0;
     } catch (const std::exception& error) {
+#ifdef _WIN32
+        notifyHelper(startup.get(), std::string("E") + std::string(error.what()).substr(0, 2048) + "\n");
+#endif
         std::cerr << "PVLedger startup failed: " << error.what() << '\n';
         return 1;
     }

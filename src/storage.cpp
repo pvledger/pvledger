@@ -2,14 +2,20 @@
 #include <sqlite3.h>
 #include <ctime>
 #include <fstream>
+#ifndef _WIN32
 #include <sys/stat.h>
+#endif
 
 namespace pvl {
 namespace {
 struct BackupDirectory {
     fs::path path = fs::temp_directory_path() / ("pvledger-" + token());
     BackupDirectory() {
+#ifdef _WIN32
+        if (!fs::create_directory(path)) throw std::runtime_error("Cannot create backup directory");
+#else
         if (::mkdir(path.c_str(), 0700) != 0) throw std::runtime_error("Cannot create backup directory");
+#endif
     }
     ~BackupDirectory() {
         std::error_code ignored;
@@ -60,7 +66,7 @@ class Sqlite final : public Repository {
 public:
     explicit Sqlite(const fs::path& path) {
         sqlite3* raw = nullptr;
-        const int code = sqlite3_open_v2(path.c_str(), &raw, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+        const int code = sqlite3_open_v2(path.u8string().c_str(), &raw, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
         db.reset(raw);
         check(code);
         sqlite3_busy_timeout(raw, 5000);
@@ -339,7 +345,7 @@ void restoreBackup(const Config& config, const std::string& bytes, bool setup,
     // AUTOINCREMENT high-water marks without firing the posting rules a second time.
     Sqlite db(config.database);
     db.execute("PRAGMA trusted_schema=OFF");
-    db.execute("ATTACH DATABASE ? AS incoming", {file.string()});
+    db.execute("ATTACH DATABASE ? AS incoming", {file.u8string()});
     Transaction transaction(db);
     if (setup && initialized(db)) throw Error(409, "constraint");
     db.execute("PRAGMA defer_foreign_keys=ON");
