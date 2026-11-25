@@ -6,6 +6,10 @@ PVLedger is a self-hosted ledger for personal accounts, balance history, income,
 
 Copyright (c) 2026 Vadim Prishlyak. PVLedger is available under AGPL-3.0-only or a separate commercial license. Under the AGPL, operators of a modified network service must offer its corresponding source to users who interact with it remotely. For a proprietary modification, contact Vadim Prishlyak to obtain commercial terms. [License](LICENSE) · [Commercial licensing](mailto:pvadimr@pvadimr.com)
 
+## Documentation
+
+The Sphinx manuals cover installation, everyday use, backups, and project progress in [English](docs/doc/en/index.rst) and [Russian](docs/doc/ru/index.rst). See the [documentation build and publishing guide](docs/doc/en/publishing.rst) to preview both editions or deploy them to a static site.
+
 ## Build and run
 
 The supported release target is Linux x86-64. Install a C++17 compiler with static C/C++ runtimes, binutils, CMake 3.18+, Git, pkg-config, and the SQLite, OpenSSL and JsonCpp development packages. The release needs the SQLite and libcrypto static archives. CMake uses an installed JsonCpp archive or builds JsonCpp 1.9.5. Python 3.8+ runs the HTTP integration suite. CTest also exercises the browser file parsers when it finds a Chromium-based browser. CMake uses installed Oat++ 1.3.0 and yaml-cpp 0.8 if available, or fetches the pinned release tags. It also builds miniz 3.0.2 for spreadsheet packaging.
