@@ -7,7 +7,7 @@
 Этот раздел описывает сборку для Linux x86-64. Для сборки нужны компилятор
 с поддержкой C++17 и статическими библиотеками среды выполнения C и C++,
 binutils, CMake 3.18 или новее, Git, pkg-config и пакеты разработки SQLite,
-OpenSSL и JsonCpp. Статической сборке нужны ``libsqlite3.a`` и
+OpenSSL и JsonCpp. Требуется SQLite 3.35 или новее. Статической сборке нужны ``libsqlite3.a`` и
 ``libcrypto.a``. В сборочном образе Debian используются пакеты
 ``ca-certificates cmake g++ git libjsoncpp-dev libsqlite3-dev libssl-dev make
 pkg-config``. Для интеграционных HTTP-тестов нужен Python 3.8 или новее.

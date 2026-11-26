@@ -37,7 +37,9 @@ constexpr std::pair<const char*, const char*> reportPages[] = {
     {"/reports/expense-categories", "expense_breakdown"},
     {"/reports/spending", "spending_timeline"},
     {"/reports/estimates", "estimates"},
-    {"/reports/balances", "balance_timeline"}
+    {"/reports/balances", "balance_timeline"},
+    {"/reports/balance-projection", "balance_projection"},
+    {"/reports/fund-distribution", "fund_distribution"}
 };
 
 bool starts(const std::string& value, const std::string& prefix) {

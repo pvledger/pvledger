@@ -151,6 +151,14 @@ expense_breakdown: Expenses by category
 spending_timeline: Spending over time
 day: Day (UTC)
 balance_timeline: Balance history
+balance_projection: Projected balances
+fund_distribution: Fund distribution
+projection_hint: Starts with today's recorded current and savings balances. Outstanding plans from tomorrow (UTC) change current balances. Expand an account to see its chart.
+distribution_hint: Recorded current and savings balances by currency. Negative balances appear to the left of zero.
+total_balance: Total balance
+delta: Planned change
+account: Account
+balance_bar: Balance chart
 data_tools: Data
 import_file: Import
 export_file: Export

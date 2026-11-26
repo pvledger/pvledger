@@ -74,6 +74,14 @@ expense_breakdown: Ausgaben nach Kategorie
 spending_timeline: Ausgaben im Zeitverlauf
 day: Tag (UTC)
 balance_timeline: Kontostandsverlauf
+balance_projection: Prognostizierte Kontostände
+fund_distribution: Guthabenverteilung
+projection_hint: Ausgangspunkt sind die heutigen Giro- und Sparkontostände. Offene Planbuchungen ab morgen (UTC) ändern die Girokontostände. Öffnen Sie ein Konto, um sein Diagramm zu sehen.
+distribution_hint: Erfasste Giro- und Sparkontostände nach Währung. Negative Salden stehen links von null.
+total_balance: Gesamtsaldo
+delta: Geplante Änderung
+account: Konto
+balance_bar: Kontostandsdiagramm
 data_tools: Daten
 import_file: Importieren
 export_file: Exportieren

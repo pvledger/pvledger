@@ -1,4 +1,4 @@
-"""Run the browser-native CSV, QIF and OFX parsers on local fixtures."""
+"""Run the browser-native parsers and report and export workflows on local fixtures."""
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import os

@@ -1,12 +1,12 @@
-# PVLedger — Database Specification (Draft v0.7.2)
+# PVLedger — Database Specification (Draft v0.7.3)
 
 **Source:** [SQLite schema](../../db/pvledger.sql). The SQLite implementation uses four triggers for balance posting and history.
 
-> **Schema contract:** v0.7.2 adds posting and history triggers to the v0.7.1 tables. Upgrading preserves existing balances, financial entries, history and reference seeds.
+> **Schema contract:** v0.7.3 removes actual-income status and retains the four posting and history triggers introduced in v0.7.2. Startup takes a backup and preserves existing financial entries, balances, history and reference seeds.
 
 ## 1. Overview and changes from v0.7
 
-**20 tables · 119 columns · 26 foreign keys · 1 explicit secondary index · 4 triggers · 430 default rows.**
+**20 tables · 118 columns · 26 foreign keys · 1 explicit secondary index · 4 triggers · 430 default rows.**
 
 | Change | Current contract |
 |---|---|
@@ -20,14 +20,14 @@
 | Default data | 249 countries, 178 currencies, 3 roles; IDs, strings and `NULL`s preserved from the SQL. |
 | Password | SHA-256 digest stored as 64 hex characters by application convention (`pvl_users.password TEXT` remains nullable). |
 | Financial amounts | Credit = remaining debt; current/checking and savings = current funds; debts = outstanding debt; taxes = tax amount. |
-| Planned expenses status | `0` Planned, `1` Processed, `2` Processed with changes, `3` Declined. |
+| Planned income and expense status | `0` Planned, `1` Processed, `2` Processed with changes, `3` Declined. |
 | Settings | Application singleton (exactly one record after initialization); version/migration tracking, customizable name and first-run language. |
 | First user | Created during first application run; source SQL contains no seeded users. |
 
 ### 1.1 Storage and invariant rules
 
 - **Unix time:** All `date` and `billing_date` columns use `INTEGER` (draft convention: UTC epoch seconds). Both income `date` columns and both account-history `date` columns are **NOT NULL**; earlier date/billing-date fields retain their original nullability. SQLite column affinity alone does not guarantee timestamp units.
-- **Application status/flag codes:** integer-coded values are handled in application logic; no `CHECK` constraints were added. Both new income status fields are required `INTEGER`, with mappings not yet defined. The planned-expense status mapping below does not automatically apply to income.
+- **Application status/flag codes:** integer-coded values are handled in application logic; no `CHECK` constraints were added. Planned income requires an integer status and planned expenses allow NULL. Both use the same application mapping.
 - **Money:** the two historical `amount` columns and both new income `amount` columns are **NOT NULL REAL**; earlier financial `amount` columns retain their original nullable `REAL` definitions. Decimal precision is a separate future design decision.
 - **Password:** `pvl_users.password` is nullable `TEXT`. The application is to store a 64-character lowercase or uppercase hex SHA-256 digest; the schema does not validate format. **Security caveat:** SHA-256 alone is too fast for password hashing; a salted password KDF such as Argon2id is recommended for production.
 - **Singleton settings:** the app creates and maintains one `pvl_settings` record after first run. The database does not prevent multiple rows, and the source provides no settings row.
@@ -325,13 +325,12 @@ Table `description` metadata is editable and **not** an extra database column. P
 | `id_account` | `INTEGER` | NO | NOT NULL; FK → `pvl_accounts_current.id` | Required current/checking account associated with this income record. |
 | `amount` | `REAL` | NO | NOT NULL | Recorded income amount (SQLite REAL); currency may be inferred from the associated account, but is not stored independently in this table. |
 | `name` | `TEXT` | NO | NOT NULL | Required income record name or label. |
-| `status` | `INTEGER` | NO | NOT NULL | Required application-defined integer status for an income record; meanings are not yet specified. |
 | `description` | `TEXT` | YES | — | Optional details about the income record. |
 | `date` | `INTEGER` | NO | NOT NULL | Unix timestamp for the actual income event; UTC epoch seconds by application convention. |
 
 **Constraints:** `id` is an autoincrementing primary key; `id_account` is required and references `pvl_accounts_current.id` (NO ACTION on update/delete). No additional unique or CHECK constraints.
 
-**Not specified by the schema:** exact business meaning of `date`, status value meanings, explicit currency field, or any link between planned and actual income.
+**Not specified by the schema:** a separate currency field or a link between planned and actual income.
 
 
 ### 3.15 `pvl_income_planned`
@@ -346,13 +345,13 @@ Table `description` metadata is editable and **not** an extra database column. P
 | `id_account` | `INTEGER` | NO | NOT NULL; FK → `pvl_accounts_current.id` | Required current/checking account associated with this planned income. |
 | `name` | `TEXT` | NO | NOT NULL | Required planned income name or label. |
 | `amount` | `REAL` | NO | NOT NULL | Planned income amount (SQLite REAL); no separate currency column is defined. |
-| `status` | `INTEGER` | NO | NOT NULL | Required application-defined integer planned-income status; no value-to-meaning mapping is specified. |
+| `status` | `INTEGER` | NO | NOT NULL | Required application-defined integer planned-income status with the mapping in §4.2. |
 | `description` | `TEXT` | YES | — | Optional details about the planned income record. |
 | `date` | `INTEGER` | NO | NOT NULL | Unix timestamp for the planned income event; UTC epoch seconds by application convention. |
 
 **Constraints:** `id` is an autoincrementing primary key; `id_account` is required and references `pvl_accounts_current.id` (NO ACTION on update/delete). No additional unique or CHECK constraints.
 
-**Not specified by the schema:** exact business meaning of `date`, status value meanings, explicit currency field, or any link between planned and actual income.
+**Not specified by the schema:** a separate currency field or a link between planned and actual income.
 
 
 ### 3.16 `pvl_plugins`
@@ -456,7 +455,7 @@ Table `description` metadata is editable and **not** an extra database column. P
 
 No separate `pvl_accounts_check` table exists; checking accounts are modeled by `pvl_accounts_current`. Savings balances are likewise the current funds held in the savings account.
 
-### 4.2 Planned expense status
+### 4.2 Planned income and expense status
 
 | Value | Meaning |
 |---:|---|
@@ -465,7 +464,7 @@ No separate `pvl_accounts_check` table exists; checking accounts are modeled by 
 | 2 | Processed with changes |
 | 3 | Declined |
 
-The SQL column remains nullable `INTEGER`, with no CHECK constraint, so the accepted values are an application rule rather than a database-enforced restriction. Other integer-coded flags remain undefined by this version.
+The planned-expense column allows NULL. Planned income requires an integer. The application validates new or changed status codes for both fields.
 
 ### 4.3 Singleton settings and version tracking
 
@@ -497,11 +496,11 @@ The SQL column remains nullable `INTEGER`, with no CHECK constraint, so the acce
 - **Capture.** A change of an existing account to a finite numeric balance, including its first assignment from NULL, appends one snapshot. An account insert or a same-value update creates none. The history tables support several snapshots for the same second.
 - **Query performance:** a composite index on `(id_account, date)` is a possible future optimization, not present in the uploaded SQL.
 
-### 4.7 Income and planned income (v0.7.1)
+### 4.7 Income and planned income
 
-- **Actual income:** `pvl_income` stores a named monetary amount against a required current/checking account. `id_account`, `amount`, `name`, `status`, and `date` are NOT NULL, while `description` may be NULL.
-- **Planned income:** `pvl_income_planned` has the same required fields including `date INTEGER NOT NULL`, but represents an intended income record. A formal planning/settlement workflow has **not** been specified.
-- **Statuses:** both new `status INTEGER NOT NULL` columns contain application-defined values. The `pvl_expenses_planned` codes 0–3 **must not be assumed** to apply to income.
+- **Actual income:** `pvl_income` stores a named monetary amount against a required current/checking account. `id_account`, `amount`, `name` and `date` are NOT NULL, while `description` may be NULL.
+- **Planned income:** `pvl_income_planned` has the same required fields and additionally requires `status`. It represents an intended income record.
+- **Statuses:** planned income uses codes 0–3, shared with planned expenses. Schema 0.7.3 removes status from actual income.
 - **Amounts and currency:** both new `amount REAL NOT NULL` columns store income amounts. They have no independent currency column; the linked account's currency is the natural application context, but this inheritance is not enforced by SQL.
 - **Dates:** both tables now require `date INTEGER NOT NULL`, storing Unix time (UTC seconds since 1970-01-01 by draft application convention). The actual-income date is intended as the income-event timestamp, and the planned-income date as the expected-income timestamp. No separate created-at or processed-at timestamp exists; the exact event interpretation is an application decision.
 - **Posting.** Inserting actual income credits the linked current account. Inserting an actual expense debits its signed amount in the account currency. Both require a known starting balance. The insert, account update and resulting snapshot are atomic. Planned entries, edits and deletions do not post.
@@ -962,7 +961,7 @@ All currency seed-row `description` values are SQL `NULL`.
 
 ## 6. Cross-database recreation and migration notes
 
-**Portability:** The two history tables use integer Unix timestamps, REAL balances and required integer foreign keys; both income tables also require `date INTEGER NOT NULL` (Unix time), REAL amounts and INTEGER application status codes. For PostgreSQL use BIGINT epoch timestamps and DOUBLE PRECISION balances as currently specified; for MariaDB/MySQL use BIGINT and DOUBLE. Both history account references must be NOT NULL. Neither history table includes a UNIQUE `(id_account, date)` rule.
+**Portability:** The two history tables use integer Unix timestamps, REAL balances and required integer foreign keys. Both income tables require `date INTEGER NOT NULL` (Unix time) and REAL amounts. Planned income also requires an INTEGER application status code. For PostgreSQL use BIGINT epoch timestamps and DOUBLE PRECISION balances as currently specified. For MariaDB/MySQL use BIGINT and DOUBLE. Both history account references must be NOT NULL. Neither history table includes a UNIQUE `(id_account, date)` rule.
 
 
 | Feature | SQLite | PostgreSQL | MySQL/MariaDB |
@@ -970,7 +969,7 @@ All currency seed-row `description` values are SQL `NULL`.
 | Autoincrement primary key | `INTEGER PRIMARY KEY AUTOINCREMENT` where specified | `BIGINT GENERATED BY DEFAULT AS IDENTITY` | `BIGINT AUTO_INCREMENT` |
 | Unix timestamp | `INTEGER` (UTC seconds by draft convention) | `BIGINT` epoch seconds | `BIGINT` epoch seconds |
 | Finance amount | `REAL` | `DOUBLE PRECISION` (or future decimal change) | `DOUBLE` (or future decimal change) |
-| Required income `status` | `INTEGER NOT NULL` | `INTEGER NOT NULL` | `INT NOT NULL` |
+| Required planned income `status` | `INTEGER NOT NULL` | `INTEGER NOT NULL` | `INT NOT NULL` |
 | Required income `date` | `INTEGER NOT NULL`, Unix seconds | `BIGINT NOT NULL`, Unix seconds | `BIGINT NOT NULL`, Unix seconds |
 | Income account reference | `INTEGER NOT NULL` FK to `pvl_accounts_current.id` | `BIGINT NOT NULL` FK | `BIGINT NOT NULL` FK |
 | SHA-256 digest | `TEXT` | `TEXT` / `VARCHAR(64)` | `VARCHAR(64)` |
@@ -986,7 +985,7 @@ All currency seed-row `description` values are SQL `NULL`.
 
 - [ ] Interest and billing_date calculation conventions remain unspecified; billing_date uses INTEGER UTC Unix epoch seconds as a draft convention.
 - [ ] Planned-expense status codes 0–3 are application-defined; source SQL allows NULL and any other INTEGER, with no CHECK constraint.
-- [ ] Other state-code fields (pvl_plugins.enabled, pvl_settings.demo_mode, pvl_users.is_admin, pvl_income.status, pvl_income_planned.status) still need application code mappings.
+- [ ] Other state-code fields (pvl_plugins.enabled, pvl_settings.demo_mode, pvl_users.is_admin) still need application code mappings.
 - [ ] Role privileges and permission enforcement are not defined by the current schema; users must reference a role.
 - [ ] pvl_settings should contain exactly one row following first-run setup; its singleton invariant is not enforced by SQL (source seeds zero rows).
 - [ ] Define whether initially blank instance_name means SQL NULL or the empty string, and define the lang value format (e.g. BCP 47).
@@ -1002,7 +1001,7 @@ All currency seed-row `description` values are SQL `NULL`.
 - [ ] Imported country/currency names are preserved as supplied; multilingual name variants and special-purpose codes may need separate localization records.
 - [ ] SQLite requires PRAGMA foreign_keys=ON on application connections; FK ON DELETE/UPDATE actions default to NO ACTION.
 - [ ] Specify recurrence rules for pvl_expenses_recurring and date/amount update workflows.
-- [ ] Define income and planned-income integer status values and transitions, independent of planned-expense statuses until explicitly decided.
+- [ ] Define any future automated planned-income status transitions.
 - [x] Both income tables have `date INTEGER NOT NULL`, storing Unix time.
 - [ ] Define whether `pvl_income.date` means received time or booking time, and whether `pvl_income_planned.date` means the expected deposit time or another scheduled event; confirm seconds vs milliseconds if application convention differs.
 - [x] Post the signed actual income amount in its account currency on insert and capture the resulting balance when it changes.
@@ -1010,7 +1009,7 @@ All currency seed-row `description` values are SQL `NULL`.
 
 ## 8. Validation and version history
 
-The JSON companion includes all 20 tables, 119 columns, 26 foreign keys, nullable flags, primary keys, the currency ISO index, the derived CREATE TABLE definitions, and all 430 explicit seed rows. The modified schema and regenerated SQLite databases were compared table by table (definitions, keys, indexes, seed values and integrity) — see the separate validation report.
+The JSON companion includes all 20 tables, 118 columns, 26 foreign keys, nullable flags, primary keys, the currency ISO index, the derived CREATE TABLE definitions, and all 430 explicit seed rows. The modified schema and regenerated SQLite databases were compared table by table (definitions, keys, indexes, seed values and integrity) — see the separate validation report.
 
 | Spec revision | Source | Main changes |
 |---|---|---|
@@ -1023,6 +1022,7 @@ The JSON companion includes all 20 tables, 119 columns, 26 foreign keys, nullabl
 | v0.7 | `pvledger(7).sql` | Added actual and planned income tables, two required account foreign keys; 430 seed rows retained. |
 | v0.7.1 | Derived from `pvledger(7).sql` | Added `date INTEGER NOT NULL` to both income tables; 119 total columns; all seed data and existing relationships unchanged. |
 | v0.7.2 | `db/pvledger.sql` | Added four triggers for insert-time posting and account balance history. Migration installs the triggers without replaying existing entries. |
+| v0.7.3 | `db/pvledger.sql` | Removes actual-income status. Uses 118 columns and retains the same tables, foreign keys, triggers and seeds. |
 
 
 ## v0.6.1 amendment — historical account linkage
@@ -1055,3 +1055,12 @@ The JSON companion includes all 20 tables, 119 columns, 26 foreign keys, nullabl
 - **Timestamp semantics:** Unix time; UTC epoch seconds are the recorded draft application convention. No database CHECK constraint verifies seconds/time zone.
 - **Migration:** `pvledger_migration_v0.7_to_v0.7.1.sql` is safe for **empty** income tables only. When existing income rows are present, the migration fails rather than fabricating timestamps or deleting data; a reviewed backfill and table-rebuild migration is then necessary. Run the migration with `sqlite3 -bail`.
 - **Validation:** See `pvledger_spec_v0.7.1_validation.md` for matching regenerated SQL, SQLite constraints and seed-data checks, and successful/blocked migration scenarios.
+
+## v0.7.3 amendment — actual income
+
+At startup PVLedger checks `pvl_settings.db_version` and backs up the SQLite
+file before applying any required migration. With SQLite 3.35 or newer,
+the v0.7.2 → v0.7.3 stage runs `ALTER TABLE pvl_income DROP COLUMN status`
+and validates the resulting schema before updating the version and committing.
+Existing amounts, IDs, sequence counters, account balances, history and
+planned statuses are preserved. The migration does not replay income postings.

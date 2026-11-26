@@ -52,7 +52,7 @@ Dataset datasetFor(const std::string& name) {
         dataset.account = "e.id_account";
         dataset.dates = true;
         dataset.currency = name == "expenses" || name == "planned-expenses" ? "e.id_currency" : "a.id_currency";
-        dataset.statuses = name == "income" || name == "planned-income" || name == "planned-expenses";
+        dataset.statuses = name == "planned-income" || name == "planned-expenses";
     }
     return dataset;
 }
@@ -300,8 +300,75 @@ static Value estimates(Repository& db, const Params& filters, int role, Json::In
     return result;
 }
 
+static Value balancesReport(Repository& db, const Params& filters, int role, Json::Int64 user, bool projection) {
+    Params scope = filters;
+    const auto through = scope.extract("to");
+    require(through.empty() || projection);
+    require(scope.empty() || (scope.size() == 1 && scope.count("id_currency")));
+    std::string accounts;
+    std::vector<Value> args;
+    for (const std::string kind : {"current", "savings"}) {
+        const auto query = selectData(datasetFor("accounts/" + kind), scope, role, user);
+        if (!accounts.empty()) accounts += " UNION ALL ";
+        accounts += "SELECT '" + kind + "' AS account_type,e.id AS id_account,e.name AS account,e.id_currency,e.amount" +
+                    query.from + query.condition + (query.condition.empty() ? " WHERE " : " AND ") +
+                    "typeof(e.amount) IN ('integer','real') AND abs(e.amount)<=1.7976931348623157e308";
+        args.insert(args.end(), query.args.begin(), query.args.end());
+    }
+    std::string sql = "WITH accounts AS (" + accounts + ")";
+    if (projection) {
+        sql += R"sql(,
+            today(day) AS (SELECT CAST(strftime('%s','now','start of day') AS INTEGER)),
+            plans AS (
+                SELECT a.id_account,a.id_currency,e.date,e.amount AS delta
+                FROM accounts a JOIN pvl_income_planned e ON e.id_account=a.id_account
+                WHERE a.account_type='current' AND e.status=0
+                UNION ALL
+                SELECT a.id_account,a.id_currency,e.date,-e.amount
+                FROM accounts a JOIN pvl_expenses_planned e ON e.id_account=a.id_account
+                WHERE a.account_type='current' AND a.id_currency=e.id_currency AND (e.status=0 OR e.status IS NULL)
+                      AND typeof(e.amount) IN ('integer','real')
+            ),
+            changes AS (
+                SELECT account_type,id_account,id_currency,day,amount AS movement,0 AS delta FROM accounts CROSS JOIN today
+                UNION ALL
+                SELECT 'current',id_account,id_currency,
+                       CAST(strftime('%s',date,'unixepoch','start of day') AS INTEGER),
+                       SUM(delta),SUM(delta)
+                FROM plans CROSS JOIN today
+                WHERE typeof(date)='integer' AND date BETWEEN today.day+86400 AND ?
+                      AND typeof(delta) IN ('integer','real') AND abs(delta)<=1.7976931348623157e308
+                GROUP BY id_account,id_currency,date/86400
+            ),
+            series AS (
+                SELECT * FROM changes
+                UNION ALL
+                SELECT NULL,NULL,id_currency,day,SUM(movement),SUM(delta) FROM changes GROUP BY id_currency,day
+            )
+            SELECT s.account_type,s.id_account,a.account,s.id_currency,COALESCE(NULLIF(c.iso,''),c.name) AS currency,
+                   s.day,s.delta,SUM(s.movement) OVER (
+                       PARTITION BY s.id_currency,s.account_type,s.id_account ORDER BY s.day
+                   ) AS amount
+            FROM series s JOIN pvl_currencies c ON c.id=s.id_currency
+            LEFT JOIN accounts a ON a.account_type=s.account_type AND a.id_account=s.id_account
+            ORDER BY s.id_currency,s.account_type,s.id_account,s.day)sql";
+        const auto end = through.empty() ? 253402300799LL : integer(through.mapped());
+        require(end >= -62135596800LL && end <= 253402300799LL);
+        args.emplace_back(Json::Int64(end));
+    } else {
+        sql += " SELECT a.*,COALESCE(NULLIF(c.iso,''),c.name) AS currency"
+               " FROM accounts a JOIN pvl_currencies c ON c.id=a.id_currency"
+               " ORDER BY c.id,a.amount DESC,a.account_type,a.id_account";
+    }
+    Value result;
+    result["items"] = limitedQuery(db, sql, args);
+    return result;
+}
+
 Value report(Repository& db, const std::string& name, const Params& filters, int role, Json::Int64 user) {
     if (name == "estimates") return estimates(db, filters, role, user);
+    if (name == "balance-projection" || name == "fund-distribution")
+        return balancesReport(db, filters, role, user, name == "balance-projection");
     Params params = filters;
     const bool balances = name == "balances";
     const bool spending = name == "spending";

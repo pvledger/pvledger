@@ -1,8 +1,8 @@
 Project progress
 ================
 
-Version 0.1.2 (25 November 2026)
---------------------------------
+Version 0.1.2 (released 26 November 2026)
+--------------------------------------------------
 
 * Windows tray helper, editable YAML configuration and a per-user SQLite ledger.
 * NSIS installers for Windows x64, built with Visual Studio or MinGW-w64.
@@ -12,8 +12,12 @@ Version 0.1.2 (25 November 2026)
 * Cash flow estimates for all accessible current accounts or one account.
 * ODS and XLSX export, with column selection, filters and preview.
 * SQLite backup and restore in Settings and restore during first-run setup.
-* Balance updates when posting actual income or expenses, with schema 0.7.2
-  and timestamped current and savings balance history.
+* Balance updates when posting actual income or expenses, with timestamped
+  current and savings balance history.
+* Schema 0.7.3 startup migration removes actual-income status after a backup.
+* Projected balance charts and tables for each account and currency total.
+* Fund distribution charts compare current and savings balances by currency.
+* A single QFX choice in the Export wizard.
 * Commercial licensing alongside AGPL-3.0-only.
 
 Version 0.1.1 (24 November 2026)

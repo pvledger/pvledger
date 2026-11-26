@@ -473,7 +473,7 @@ CREATE TABLE IF NOT EXISTS "pvl_expenses_planned" (id INTEGER PRIMARY KEY AUTOIN
 CREATE TABLE IF NOT EXISTS "pvl_expenses_recurring" (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, description TEXT, id_category INTEGER REFERENCES pvl_expenses_categories (id) NOT NULL, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL, date INTEGER);
 
 -- Table: pvl_income
-CREATE TABLE IF NOT EXISTS pvl_income (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL NOT NULL, name TEXT NOT NULL, status INTEGER NOT NULL, description TEXT, date INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS pvl_income (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, amount REAL NOT NULL, name TEXT NOT NULL, description TEXT, date INTEGER NOT NULL);
 
 -- Table: pvl_income_planned
 CREATE TABLE IF NOT EXISTS pvl_income_planned (id INTEGER PRIMARY KEY AUTOINCREMENT, id_account INTEGER REFERENCES pvl_accounts_current (id) NOT NULL, name TEXT NOT NULL, amount REAL NOT NULL, status INTEGER NOT NULL, description TEXT, date INTEGER NOT NULL);

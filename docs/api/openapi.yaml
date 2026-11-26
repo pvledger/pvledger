@@ -894,7 +894,6 @@ paths:
         - $ref: '#/components/parameters/account'
         - $ref: '#/components/parameters/from'
         - $ref: '#/components/parameters/to'
-        - $ref: '#/components/parameters/status'
       responses:
         '200':
           description: Success
@@ -907,7 +906,7 @@ paths:
         '422': { $ref: '#/components/responses/Error' }
     post:
       summary: Add actual income
-      description: Add the signed amount to the linked current account in the same transaction. Require a known balance. Posting occurs on insertion for every valid status.
+      description: Add the signed amount to the linked current account in the same transaction. Require a known balance.
       parameters:
         - $ref: '#/components/parameters/csrf'
       requestBody:
@@ -917,7 +916,7 @@ paths:
             schema:
               allOf:
                 - $ref: '#/components/schemas/IncomeFields'
-                - required: [id_account, name, amount, date, status]
+                - required: [id_account, name, amount, date]
       responses:
         '201': {description: Created}
         '401': { $ref: '#/components/responses/Error' }
@@ -995,7 +994,7 @@ paths:
           application/json:
             schema:
               allOf:
-                - $ref: '#/components/schemas/IncomeFields'
+                - $ref: '#/components/schemas/PlannedIncomeFields'
                 - required: [id_account, name, amount, date, status]
       responses:
         '201': {description: Created}
@@ -1026,7 +1025,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: '#/components/schemas/IncomeFields' }
+            schema: { $ref: '#/components/schemas/PlannedIncomeFields' }
       responses:
         '200': {description: Updated}
         '401': { $ref: '#/components/responses/Error' }
@@ -1674,7 +1673,7 @@ paths:
                   properties:
                     id_account: {type: integer}
                     id_currency: {type: integer}
-                    status: {type: integer}
+                    status: {type: integer, description: Available for planned income and planned expenses}
                     from: {type: integer, format: int64}
                     to: {type: integer, format: int64}
       responses:
@@ -1783,6 +1782,66 @@ paths:
         - $ref: '#/components/parameters/to'
       responses:
         '200': {description: Items with currency, account, snapshot ID, date and amount}
+        '422': { $ref: '#/components/responses/Error' }
+  /reports/balance-projection:
+    get:
+      summary: Projected balances per account and per currency total
+      description: Starts at today's recorded balance. From tomorrow (UTC), applies outstanding planned income and same-currency planned expenses to each current account. Totals include savings balances. The account fields are null on total rows.
+      parameters:
+        - *currencyFilter
+        - $ref: '#/components/parameters/to'
+      responses:
+        '200':
+          description: Baseline and dated changes ordered by currency, series and UTC day (up to 5,000 items)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [account_type, id_account, account, id_currency, currency, day, delta, amount]
+                      properties:
+                        account_type: {type: string, nullable: true, enum: [current, savings, null]}
+                        id_account: {type: integer, nullable: true}
+                        account: {type: string, nullable: true}
+                        id_currency: {type: integer}
+                        currency: {type: string}
+                        day: {type: integer, format: int64, description: UTC midnight in Unix seconds}
+                        delta: {type: number, description: Net planned change for the day}
+                        amount: {type: number, description: Cumulative projected balance}
+        '401': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /reports/fund-distribution:
+    get:
+      summary: Recorded current and savings balances by currency
+      parameters:
+        - *currencyFilter
+      responses:
+        '200':
+          description: Visible accounts with recorded balances, ordered by currency and descending balance (up to 5,000 items)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [account_type, id_account, account, id_currency, currency, amount]
+                      properties:
+                        account_type: {type: string, enum: [current, savings]}
+                        id_account: {type: integer}
+                        account: {type: string}
+                        id_currency: {type: integer}
+                        currency: {type: string}
+                        amount: {type: number, description: Signed recorded balance}
+        '401': { $ref: '#/components/responses/Error' }
         '422': { $ref: '#/components/responses/Error' }
   /ui/menu:
     get:
@@ -1906,16 +1965,21 @@ components:
     IncomeFields:
       type: object
       additionalProperties: false
-      properties:
+      properties: &incomeProperties
         id_account: {type: integer, minimum: 1}
         name: {type: string}
         amount: {type: number}
         date: {type: integer, format: int64, description: UTC epoch seconds}
+        description: {type: string, nullable: true}
+    PlannedIncomeFields:
+      type: object
+      additionalProperties: false
+      properties:
+        <<: *incomeProperties
         status:
           type: integer
           enum: [0, 1, 2, 3]
           description: 0 Planned, 1 Processed, 2 Processed with changes, 3 Declined
-        description: {type: string, nullable: true}
     Credentials:
       type: object
       required: [username, password]

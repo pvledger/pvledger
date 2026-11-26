@@ -6,7 +6,7 @@ Build from source
 
 This section covers Linux x86-64. Use a C++17 compiler with static
 C and C++ runtimes, binutils, CMake 3.18 or later, Git, pkg-config, and development
-packages for SQLite, OpenSSL and JsonCpp. The static build requires
+packages for SQLite 3.35 or newer, OpenSSL and JsonCpp. The static build requires
 ``libsqlite3.a`` and ``libcrypto.a``. On Debian, the Docker build uses
 ``ca-certificates cmake g++ git libjsoncpp-dev libsqlite3-dev libssl-dev make
 pkg-config``. Add Python 3.8 or later for HTTP integration tests. When CMake

@@ -1,7 +1,9 @@
-<!doctype html><meta charset="utf-8"><title>Import format regressions</title>
+<!doctype html><meta charset="utf-8"><title>Data and report regressions</title>
 <output>pending</output>
+<main><div id="workflow"></div></main>
 <script type="module">
 import {mapRows, parseFile} from "../js/import-file.js";
+import {workflow} from "../js/workflows.js";
 const output = document.querySelector("output");
 try {
   const equal = (actual, expected) => {
@@ -50,6 +52,50 @@ try {
   rejects(() => parseFile('<!DOCTYPE test>' + xml, "ofx", {}));
   rejects(() => parseFile(xml.replace("<BANKTRANLIST>", "<BANKTRANLIST><UNKNOWN/>"), "ofx", {}));
   equal(parseFile(xml.replace("</STMTTRN>","<ORIGCURRENCY/></STMTTRN>"), "qfx", {}).records[0].error, "unsupported_record");
+  const root = document.querySelector("#workflow");
+  const node = (tag, label = "") => Object.assign(document.createElement(tag), {textContent: label});
+  const context = {
+    root, node, tr: key => key, locale: "en-US",
+    format: (key, value) => key === "day" ? new Date(value * 1000).toISOString().slice(0, 10) : value,
+    lookup: async () => [],
+    options: () => node("select"),
+    dateInput: () => Object.assign(node("input"), {type: "date"}),
+    table: (items, columns) => {
+      const wrapper = node("div");
+      const grid = node("table");
+      const head = grid.createTHead().insertRow();
+      for (const column of columns) head.append(node("th", column));
+      const body = grid.createTBody();
+      for (const item of items) {
+        const row = body.insertRow();
+        for (const column of columns) row.insertCell().textContent = item[column];
+      }
+      wrapper.append(grid);
+      return wrapper;
+    }
+  };
+  await workflow({...context, route: "data/export"});
+  equal(root.querySelectorAll('select[name="file_format"] option[value="qfx"]').length, 1);
+  equal(root.querySelectorAll('select[name="file_format"] option[value="ofx"]').length, 1);
+  root.replaceChildren();
+  const account = {id_currency: 1, currency: "AED", account_type: "current", id_account: 1, account: "Checking"};
+  const baseline = 1795651200;
+  const projected = [
+    {...account, id_account: null, account_type: null, account: null, day: baseline, delta: 0, amount: 100},
+    {...account, id_account: null, account_type: null, account: null, day: baseline + 86400, delta: -40, amount: 60},
+    {...account, day: baseline, delta: 0, amount: 100},
+    {...account, day: baseline + 86400, delta: -40, amount: 60}
+  ];
+  await workflow({...context, route: "reports/balance-projection", request: async () => ({items: projected})});
+  equal(root.querySelectorAll("canvas.chart").length, 2);
+  equal(root.querySelector("details summary").textContent, "Checking · current_accounts");
+  equal(root.querySelector("details tbody tr:last-child").cells[2].textContent, "60");
+  root.replaceChildren();
+  const balances = [{...account, amount: -10},
+                    {...account, account_type: "savings", account: "Reserve", amount: 50}];
+  await workflow({...context, route: "reports/fund-distribution", request: async () => ({items: balances})});
+  equal(root.querySelectorAll("canvas.balance-bar").length, 2);
+  equal(root.querySelector("tbody tr").cells[2].textContent, "-10");
   output.textContent = "passed";
 } catch (err) { output.textContent = err.stack; }
 await fetch("/result", {method:"POST", body:output.textContent});

@@ -12,7 +12,7 @@ The Sphinx manuals cover installation, everyday use, backups, and project progre
 
 ## Build and run
 
-This section covers Linux x86-64. Install a C++17 compiler with static C/C++ runtimes, binutils, CMake 3.18+, Git, pkg-config, and the SQLite, OpenSSL and JsonCpp development packages. The release needs the SQLite and libcrypto static archives. CMake uses an installed JsonCpp archive or builds JsonCpp 1.9.5. Python 3.8+ runs the HTTP integration suite. CTest also exercises the browser file parsers when it finds a Chromium-based browser. CMake uses installed Oat++ 1.3.0 and yaml-cpp 0.8 if available, or fetches the pinned release tags. It also builds miniz 3.0.2 for spreadsheet packaging.
+This section covers Linux x86-64. Install a C++17 compiler with static C/C++ runtimes, binutils, CMake 3.18+, Git, pkg-config, and development packages for SQLite 3.35 or newer, OpenSSL and JsonCpp. The release needs the SQLite and libcrypto static archives. CMake uses an installed JsonCpp archive or builds JsonCpp 1.9.5. Python 3.8+ runs the HTTP integration suite. CTest also exercises the browser workflows when it finds a Chromium-based browser. CMake uses installed Oat++ 1.3.0 and yaml-cpp 0.8 if available, or fetches the pinned release tags. It also builds miniz 3.0.2 for spreadsheet packaging.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DPVLEDGER_STATIC=ON
@@ -121,7 +121,7 @@ Administrators can see all records and manage users, plugins, and settings. Read
 
 The English locale includes all application strings. The German, Kazakh, and Russian packs cover the main screens and navigation and fall back to English for omitted keys. Copy a language file to add a locale, set `meta.locale` to its filename stem, and restart. A theme is a directory containing `style.css` under the configured themes path. Assign language, currency, and theme from Settings.
 
-The JSON API uses `/api/v1`. Income and balance history are available to browse and filter. Income status is shown as its stored integer. Adding an actual expense debits its current account. Adding actual income credits it. Set a starting balance first and use the account currency for expenses. Each change to an existing current or savings balance stores the resulting balance with the current UTC time. Multiple changes in one second have distinct history IDs. Editing or deleting a posted entry does not adjust the account again. Dates use UTC epoch seconds and the dashboard groups totals by currency. See the [API contract](docs/api/README.md) and [OpenAPI document](docs/api/openapi.yaml).
+The JSON API uses `/api/v1`. Actual and planned income can be filtered by account and date. Planned income also supports status filtering. Adding an actual expense debits its current account. Adding actual income credits it. Set a starting balance first and use the account currency for expenses. Each change to an existing current or savings balance stores the resulting balance with the current UTC time. Multiple changes in one second have distinct history IDs. Editing or deleting a posted entry does not adjust the account again. Dates use UTC epoch seconds and the dashboard groups totals by currency. See the [API contract](docs/api/README.md) and [OpenAPI document](docs/api/openapi.yaml).
 
 ## Import, export and reports
 
@@ -132,6 +132,10 @@ The first import destination is actual expenses. The wizard accepts bank, cash a
 **Data → Export** offers UTF-8 CSV, OpenDocument (.ods) and Excel (.xlsx) for accounts, histories, financial entries and reference data. Choose the filters and columns, review the count and sample, then download. Relationship columns include IDs and selectable readable labels. Dates use UTC epoch seconds. Workbooks preserve column order and store amounts as numeric cells and user-entered text as literal strings. Integers with more than 15 digits use text cells to preserve their exact value. QIF, OFX and QFX are also available for actual transactions from one account and currency. A download holds up to 5,000 rows and 8 MiB. Larger datasets can be split with filters.
 
 **Reports → Cash flow estimates** shows daily income, expenses and net cash flow across all accessible current accounts or for one selected account. Through the end of today (UTC), it counts actual entries. From tomorrow it counts outstanding planned entries (status Planned, or an unset planned-expense status). Each row identifies its basis and each currency has its own table.
+
+**Reports → Projected balances** charts today's recorded balance and future daily changes. Expand an account to see its chart and table. Each currency also has a total. From tomorrow (UTC), the report adds planned income and subtracts planned expenses in the account's currency. It uses outstanding plans with a date and amount. Savings balances stay flat and contribute to the total. Choose a currency or a through date to narrow the report.
+
+**Reports → Fund distribution** compares the recorded balances of visible current and savings accounts with signed bars and a table for each currency. Both reports use accounts with a recorded balance. Credit account amounts represent debt, which is shown in the credit account section.
 
 **Reports → Spending over time** charts daily spending and lists the same totals in a table. Select a current account, expense currency, or date range to narrow the report. Each currency has its own series. A day appears when an authorized actual expense has a recorded date and amount, using UTC day boundaries.
 
@@ -164,7 +168,9 @@ sqlite3 /path/to/pvledger.backup 'PRAGMA integrity_check; PRAGMA foreign_key_che
 
 For an offline restore, stop the application and point its configuration at a verified copy of the backup. Keep the old file until the restored instance starts and its records have been checked. Automatic upgrades create a sibling SQLite backup before changing the schema. A v0.6 database with unlinked history snapshots or a v0.7 database with populated undated income requires data reconciliation before it can be upgraded. The application refuses these upgrades and preserves the existing rows and version.
 
-The checked-in `db/pvledger.db` is a seeded v0.7 fixture. To try it, copy it to a working location and point `database.sqlite.path` at the copy. Startup backs up the file, upgrades its empty income tables, installs the v0.7.2 posting triggers, and opens setup without reapplying the seeds.
+PVLedger 0.1.2 upgrades to schema 0.7.3 on startup with SQLite 3.35 or newer. The migration drops the actual-income status column and preserves entries, account balances and balance history. API clients should omit `status` from actual-income writes, queries and exports.
+
+The checked-in `db/pvledger.db` is a seeded v0.7 fixture. To try it, copy it to a working location and point `database.sqlite.path` at the copy. Startup backs up the file, upgrades its empty income tables to v0.7.3, installs the posting triggers and opens setup without reapplying the seeds.
 
 ## Extensions and specifications
 
