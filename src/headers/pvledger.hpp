@@ -15,7 +15,7 @@ namespace pvl {
 namespace fs = std::filesystem;
 using Value = Json::Value;
 using Params = std::map<std::string, std::string>;
-inline constexpr char currentSchemaVersion[] = "0.7.2";
+inline constexpr char currentSchemaVersion[] = "0.7.3";
 inline constexpr int backupLimit = 64 * 1024 * 1024;
 
 struct Error : std::runtime_error {
@@ -29,8 +29,10 @@ struct Config {
     int port = 8080;
     bool secureCookie = false;
     bool missing = false;
-    static Config load(const fs::path& path);
+    static Config load(const fs::path& path, const std::string* contents = nullptr);
+    std::string toYaml() const;
     void save() const;
+    void saveYaml(const std::string& contents) const;
 };
 
 std::string readFile(const fs::path& path);

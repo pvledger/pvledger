@@ -8,6 +8,11 @@ const datasets = new Map(Object.entries({
   "expense-categories": "categories", countries: "countries", currencies: "currencies"
 }));
 
+const exportFormats = {
+  csv: "CSV · UTF-8", ods: "OpenDocument (.ods)", xlsx: "Excel (.xlsx)",
+  qif: "QIF", ofx: "OFX", qfx: "QFX"
+};
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -20,6 +25,9 @@ function downloadBlob(blob, filename) {
 export async function workflow(context) {
   const {root, route, node, tr, table, lookup, options, request,
          defaultCurrency, dateInput, unixTime, statusOptions} = context;
+  const projection = route === "reports/balance-projection";
+  const distribution = route === "reports/fund-distribution";
+  const estimates = route === "reports/estimates";
   const panel = (title) => {
     const form = node("form");
     form.className = "form-panel";
@@ -68,7 +76,7 @@ export async function workflow(context) {
   const selectRef = async (form, key, resource, required) => {
     const control = options(await lookup(resource), tr(required ? "choose_value" : "all_values"));
     control.required = required;
-    if (key === "id_currency" && defaultCurrency != null && route !== "reports/estimates") {
+    if (key === "id_currency" && defaultCurrency != null && !estimates && !projection && !distribution) {
       control.value = defaultCurrency;
       if (control.selectedIndex < 0) control.selectedIndex = 0;
     }
@@ -86,7 +94,7 @@ export async function workflow(context) {
       controls.from = field(form, "from_date", dateInput());
       controls.to = field(form, "to_date", dateInput());
     }
-    if (["income", "planned-income", "planned-expenses"].includes(dataset))
+    if (["planned-income", "planned-expenses"].includes(dataset))
       controls.status = field(form, "status", statusOptions(tr("all_values")));
     return () => {
       const filters = {};
@@ -212,10 +220,7 @@ export async function workflow(context) {
 
   if (route === "data/export") {
     const scope = panel("export_scope");
-    const fileFormat = field(scope, "file_format", choice([
-      ["csv", "CSV · UTF-8"], ["ods", "OpenDocument (.ods)"], ["xlsx", "Excel (.xlsx)"],
-      ["qif", "QIF"], ["ofx", "OFX"], ["qfx", "QFX"]
-    ]));
+    const fileFormat = field(scope, "file_format", choice(Object.entries(exportFormats)));
     const dataset = field(scope, "dataset", choice(Array.from(datasets, ([id, key]) => [id, tr(key)])));
     const compatibility = node("p", tr("transaction_export_hint"));
     compatibility.hidden = true;
@@ -278,9 +283,9 @@ export async function workflow(context) {
 
   const balances = route === "reports/balances";
   const breakdown = route === "reports/expense-categories";
-  const estimates = route === "reports/estimates";
   const filters = panel("report_filters");
   if (estimates) filters.append(node("p", tr("estimates_hint")));
+  if (projection || distribution) filters.append(node("p", tr(projection ? "projection_hint" : "distribution_hint")));
   const result = node("div");
   const kind = balances ? field(filters, "account_type", choice([["current",tr("current_accounts")],["savings",tr("savings_accounts")]])) : null;
   const controls = node("div");
@@ -289,7 +294,17 @@ export async function workflow(context) {
   async function configure() {
     const next = node("div");
     const selected = kind?.value;
-    const nextRead = await filterFields(next, balances ? "history/" + selected : "expenses");
+    let nextRead;
+    if (projection || distribution) {
+      const currency = await selectRef(next, "id_currency", "currencies", false);
+      const to = projection ? field(next, "to_date", dateInput()) : null;
+      nextRead = () => {
+        const query = {};
+        if (currency.value) query.id_currency = currency.value;
+        if (to?.value) query.to = unixTime(to, true);
+        return query;
+      };
+    } else nextRead = await filterFields(next, balances ? "history/" + selected : "expenses");
     if (kind && selected !== kind.value) return;
     read = nextRead;
     controls.replaceChildren(next);
@@ -315,6 +330,38 @@ export async function workflow(context) {
       const title = balances ? rows[0].account + " · " + currency : currency;
       section.append(node("h2", title));
       result.append(section);
+      if (projection) {
+        const series = new Map();
+        for (const row of rows) {
+          const key = row.account_type + "/" + row.id_account;
+          if (!series.has(key)) series.set(key, []);
+          series.get(key).push(row);
+        }
+        const end = Math.max(...rows.map(row => row.day), params.has("to") ? Number(params.get("to")) - 86399 : 0);
+        for (const points of series.values()) {
+          const first = points[0];
+          const total = first.id_account === null;
+          const label = total ? tr("total_balance") : first.account + " · " + tr(first.account_type + "_accounts");
+          const wrap = node(total ? "section" : "details");
+          wrap.className = "report-series";
+          wrap.append(node(total ? "h3" : "summary", label));
+          const chart = node("canvas");
+          chart.className = "chart";
+          chart.setAttribute("role", "img");
+          chart.setAttribute("aria-label", tr("balance_projection") + " · " + currency + " · " + label);
+          wrap.append(chart, table(points, ["day", "delta", "amount"], route));
+          timeline(chart, points, context, "day", end);
+          section.append(wrap);
+        }
+        continue;
+      }
+      if (distribution) {
+        const displayRows = rows.map(row => ({...row, account_type: tr(row.account_type + "_accounts")}));
+        const grid = table(displayRows, ["account", "account_type", "amount"], route);
+        distributionChart(grid, rows, context);
+        section.append(grid);
+        continue;
+      }
       if (estimates) {
         const displayRows = rows.map(row => ({...row, basis: tr(row.basis),
           estimate_income: row.income, estimate_expenses: row.expenses}));
@@ -377,14 +424,43 @@ function pieChart(canvas, rows, total, colors) {
   });
 }
 
-function timeline(canvas, rows, {format, locale}, timeKey) {
+function distributionChart(grid, data, {node, tr}) {
+  const rows = grid.querySelector("table");
+  const heading = node("th", tr("balance_bar"));
+  heading.scope = "col";
+  rows.tHead.rows[0].append(heading);
+  const min = Math.min(0, ...data.map(row => row.amount));
+  const max = Math.max(0, ...data.map(row => row.amount));
+  const scale = Math.max(-min, max) || 1;
+  const span = max / scale - min / scale;
+  const position = value => span ? 2 + (value / scale - min / scale) / span * 236 : 2;
+  const zero = position(0);
+  const colors = getComputedStyle(grid);
+  Array.from(rows.tBodies[0].rows).forEach((row, i) => {
+    const canvas = node("canvas");
+    canvas.width = 240;
+    canvas.height = 18;
+    canvas.className = "balance-bar";
+    canvas.setAttribute("aria-hidden", "true");
+    row.insertCell().append(canvas);
+    const brush = canvas.getContext("2d");
+    brush.fillStyle = colors.getPropertyValue(data[i].amount < 0 ? "--danger" : "--accent").trim();
+    const value = position(data[i].amount);
+    brush.fillRect(Math.min(zero, value), 3, Math.abs(value - zero), 12);
+    brush.fillStyle = colors.color;
+    brush.fillRect(zero, 0, 1, 18);
+  });
+}
+
+function timeline(canvas, rows, {format, locale}, timeKey, through) {
   canvas.width = 720;
   canvas.height = 250;
   const ctx = canvas.getContext("2d");
   const colors = getComputedStyle(canvas);
   ctx.font = "14px sans-serif";
   const min = Math.min(...rows.map(r => r.amount)), max = Math.max(...rows.map(r => r.amount));
-  const start = rows[0][timeKey], end = rows[rows.length - 1][timeKey];
+  const start = rows[0][timeKey], last = rows[rows.length - 1];
+  const end = through ?? last[timeKey];
   const bounds = [min,max].map(v => new Intl.NumberFormat(locale, {maximumSignificantDigits: 6}).format(v));
   const left = Math.max(...bounds.map(v => ctx.measureText(v).width)) + 12;
   const x = t => start === end ? (left + 705) / 2 : left + (t - start) / (end - start) * (705 - left);
@@ -399,7 +475,13 @@ function timeline(canvas, rows, {format, locale}, timeKey) {
   ctx.strokeStyle = ctx.fillStyle = colors.getPropertyValue("--accent").trim();
   ctx.lineWidth = 2;
   ctx.beginPath();
-  rows.forEach((r,i) => i ? ctx.lineTo(x(r[timeKey]), y(r.amount)) : ctx.moveTo(x(r[timeKey]), y(r.amount)));
+  ctx.moveTo(x(start), y(rows[0].amount));
+  for (let i = 1; i < rows.length; ++i) {
+    const r = rows[i];
+    if (through !== undefined) ctx.lineTo(x(r[timeKey]), y(rows[i - 1].amount));
+    ctx.lineTo(x(r[timeKey]), y(r.amount));
+  }
+  if (through !== undefined) ctx.lineTo(x(end), y(last.amount));
   ctx.stroke();
   for (const r of rows) {
     ctx.beginPath(); ctx.arc(x(r[timeKey]), y(r.amount), 3, 0, Math.PI * 2); ctx.fill();

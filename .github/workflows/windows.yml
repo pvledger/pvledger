@@ -1,0 +1,104 @@
+name: Windows release
+on: [push, pull_request]
+jobs:
+  native:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: 74e6536215718009aae747d86d84b78376bf9e09
+          path: .ci-vcpkg
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: choco install nsis -y --no-progress
+      - run: .ci-vcpkg/bootstrap-vcpkg.bat -disableMetrics
+      - run: .ci-vcpkg/vcpkg.exe install --triplet x64-windows-static sqlite3 openssl jsoncpp
+      - run: >
+          cmake -S . -B build/windows -G "Visual Studio 17 2022" -A x64
+          "-DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/.ci-vcpkg/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static
+      - run: cmake --build build/windows --config Release --target package-windows --parallel 2
+      - run: ctest --test-dir build/windows -C Release --output-on-failure
+      - name: Verify installation, permissions and removal
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-Item build/windows/packages/*-setup.exe
+          if ((Start-Process $installer.FullName -ArgumentList '/S' -Wait -PassThru).ExitCode -ne 0) {
+            throw 'Installation failed'
+          }
+          $install = 'C:\pvledger'
+          foreach ($file in @('pvledger.exe', 'pvledger-win-helper.exe', 'share\pvledger\templates\layout.html', 'Uninstall.exe')) {
+            if (!(Test-Path (Join-Path $install $file))) { throw "Missing installed file $file" }
+          }
+          & "$install\pvledger.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'Installed CLI failed' }
+          $programs = [Environment]::GetFolderPath('CommonPrograms')
+          foreach ($shortcut in @('PVLedger.lnk', 'Uninstall PVLedger.lnk')) {
+            if (!(Test-Path "$programs\PVLedger\$shortcut")) { throw "Missing Start menu shortcut $shortcut" }
+          }
+          $users = (Get-Acl "$install\pvledger.exe").Access | Where-Object {
+            $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -eq 'S-1-5-32-545' -and
+            $_.AccessControlType -eq 'Allow'
+          }
+          $execute = [System.Security.AccessControl.FileSystemRights]::ReadAndExecute
+          $write = [System.Security.AccessControl.FileSystemRights]::Write
+          if (!$users -or !($users | Where-Object { ($_.FileSystemRights -band $execute) -eq $execute }) -or
+            ($users | Where-Object { $_.FileSystemRights -band $write })) { throw 'Unexpected Users permissions' }
+
+          $data = Join-Path $env:LOCALAPPDATA 'PVLedger'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          Set-Content "$data\config.yaml" 'retained configuration'
+          if ((Start-Process $installer.FullName -ArgumentList '/S' -Wait -PassThru).ExitCode -ne 0) {
+            throw 'Reinstallation failed'
+          }
+          if ((Start-Process "$install\Uninstall.exe" -ArgumentList '/S' -Wait -PassThru).ExitCode -ne 0) {
+            throw 'Uninstallation failed'
+          }
+          if ((Test-Path "$install\pvledger.exe") -or (Test-Path "$programs\PVLedger\PVLedger.lnk") -or
+            (Test-Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\PVLedger') -or
+            ((Get-Content "$data\config.yaml") -ne 'retained configuration')) { throw 'Unexpected uninstall result' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pvledger-windows-msvc-installer
+          path: build/windows/packages/*-setup.exe
+
+  cross:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: microsoft/vcpkg
+          ref: 74e6536215718009aae747d86d84b78376bf9e09
+          path: .ci-vcpkg
+      - run: sudo apt-get update && sudo apt-get install -y g++-mingw-w64-x86-64-posix nsis ninja-build
+      - run: |
+          mkdir -p "$RUNNER_TEMP/mingw-bin"
+          ln -s /usr/bin/x86_64-w64-mingw32-gcc-posix "$RUNNER_TEMP/mingw-bin/x86_64-w64-mingw32-gcc"
+          ln -s /usr/bin/x86_64-w64-mingw32-g++-posix "$RUNNER_TEMP/mingw-bin/x86_64-w64-mingw32-g++"
+          echo "$RUNNER_TEMP/mingw-bin" >> "$GITHUB_PATH"
+      - run: .ci-vcpkg/bootstrap-vcpkg.sh -disableMetrics
+      - run: .ci-vcpkg/vcpkg install --triplet x64-mingw-static sqlite3 openssl jsoncpp
+      - run: >
+          cmake -S . -B build/windows -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE="$PWD/.ci-vcpkg/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$PWD/.ci-vcpkg/scripts/toolchains/mingw.cmake"
+          -DVCPKG_TARGET_ARCHITECTURE=x64 -DVCPKG_TARGET_TRIPLET=x64-mingw-static
+      - run: cmake --build build/windows --target package-windows --parallel 2
+      - name: Verify x64 binaries and static dependencies
+        run: |
+          for binary in build/windows/{pvledger,pvledger-win-helper}.exe; do
+            x86_64-w64-mingw32-objdump -f "$binary" | grep -F 'file format pei-x86-64'
+            imports=$(x86_64-w64-mingw32-objdump -p "$binary" | awk '/DLL Name:/ {print tolower($3)}')
+            printf '%s\n' "$imports"
+            test -n "$imports"
+            test -z "$(printf '%s\n' "$imports" | grep -Ev '^(advapi32|bcrypt|crypt32|gdi32|kernel32|msvcrt|ntdll|ole32|shell32|shlwapi|user32|ws2_32|wsock32|ucrtbase|api-ms-win-[a-z0-9-]+)\.dll$' || true)"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pvledger-windows-mingw-installer
+          path: build/windows/packages/*-setup.exe

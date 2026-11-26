@@ -331,7 +331,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
     addCurrency(output.items[0]);
     if (!detail) {
-      if (base === "income" || base === "planned-income") root.append(filters(["id_account", "from", "to", "status"]));
+      if (base === "income") root.append(filters(["id_account", "from", "to"]));
+      if (base === "planned-income") root.append(filters(["id_account", "from", "to", "status"]));
       root.append(table(output.items, columns, base, true));
       pageLinks(output);
       if (output.writable) {

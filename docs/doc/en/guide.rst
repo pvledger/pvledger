@@ -59,6 +59,17 @@ narrow the report.
 
    Daily cash flow showing actual entries and a planned expense.
 
+**Projected balances** starts with today's recorded current and savings
+balances. From tomorrow (UTC), outstanding planned income increases the
+projected current balance and outstanding planned expenses in the same
+currency decrease it. See each currency total or expand an account to view
+its step chart and daily changes. Savings balances contribute to the total
+and stay flat. Select a currency or a through date to narrow the view.
+
+**Fund distribution** compares recorded current and savings balances by
+currency. Negative balances extend to the left of zero. The table gives the
+exact amounts.
+
 **Spending over time** shows daily actual expenses. **Expenses by category**
 groups spending within each currency. **Balance history** shows current and
 savings account snapshots, including multiple changes at the same timestamp.

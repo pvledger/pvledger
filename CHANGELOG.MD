@@ -1,6 +1,10 @@
 # PVLedger changelog
 
-## Unreleased
+## 0.1.2 — Released 2026-11-26
+
+- Added a Windows tray helper that starts and stops PVLedger, opens the default browser when the server is ready, and edits `config.yaml` with validation.
+- Added x64 NSIS installers built with Visual Studio or Linux-hosted MinGW-w64. The installer provides Start menu shortcuts, standard-user runtime access, and uninstallation that preserves each user's configuration and ledger.
+- Added Windows build and installation checks in CI and updated the English and Russian manuals and application specification.
 
 - Added nFPM build targets for Debian `.deb`, CentOS/Rocky Linux/Red Hat-compatible `.rpm`, and Arch/Artix/Manjaro `.pkg.tar.zst` packages. Native installations default to `/opt/pvledger`; generated packages are written to `build/packages/`.
 - Added a SysV init template with start, stop, restart and status commands, privilege dropping, terminal detachment and stale PID protection, plus a companion systemd unit. Service activation remains an explicit operator action.
@@ -12,6 +16,10 @@
 - Added **Restore from a backup** to initial setup, alongside the option to create an instance and its first administrator.
 - Added a commercial licensing option for proprietary modifications alongside AGPL-3.0-only. Commercial agreements are available from the copyright holder. [Licensing terms](LICENSE)
 - Actual expenses now debit their current account and actual income credits it. Changes to current and savings balances record a timestamped balance snapshot. Existing installations upgrade to database schema 0.7.2.
+- Removed status from actual income forms, filters, exports and API records. Startup upgrades to SQLite schema 0.7.3 after taking a backup and preserves posted entries, balances and history.
+- Kept one QFX choice in the Export wizard alongside OFX and QIF.
+- Added **Reports → Projected balances** with daily charts and tables for individual accounts and currency totals, based on recorded balances and outstanding income and expense plans.
+- Added **Reports → Fund distribution** with signed balance bars for current and savings accounts by currency.
 
 ## 0.1.1 — 2026-11-24
 

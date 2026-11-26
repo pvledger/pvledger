@@ -2,14 +2,20 @@
 #include <sqlite3.h>
 #include <ctime>
 #include <fstream>
+#ifndef _WIN32
 #include <sys/stat.h>
+#endif
 
 namespace pvl {
 namespace {
 struct BackupDirectory {
     fs::path path = fs::temp_directory_path() / ("pvledger-" + token());
     BackupDirectory() {
+#ifdef _WIN32
+        if (!fs::create_directory(path)) throw std::runtime_error("Cannot create backup directory");
+#else
         if (::mkdir(path.c_str(), 0700) != 0) throw std::runtime_error("Cannot create backup directory");
+#endif
     }
     ~BackupDirectory() {
         std::error_code ignored;
@@ -60,7 +66,7 @@ class Sqlite final : public Repository {
 public:
     explicit Sqlite(const fs::path& path) {
         sqlite3* raw = nullptr;
-        const int code = sqlite3_open_v2(path.c_str(), &raw, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+        const int code = sqlite3_open_v2(path.u8string().c_str(), &raw, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
         db.reset(raw);
         check(code);
         sqlite3_busy_timeout(raw, 5000);
@@ -156,6 +162,11 @@ void validate(Repository& db, Repository& canonical, bool undatedIncome = false)
         auto expectedColumns = columns(canonical, table);
         if (undatedIncome && (table == "pvl_income" || table == "pvl_income_planned"))
             expectedColumns.removeMember("date");
+        if (undatedIncome && table == "pvl_income") {
+            expectedColumns["status"] = expectedColumns["name"];
+            expectedColumns["status"]["name"] = "status";
+            expectedColumns["status"]["type"] = "INTEGER";
+        }
         if (columns(db, table) != expectedColumns || db.query(pragma) != canonical.query(pragma))
             throw std::runtime_error("Unexpected schema for " + table);
     }
@@ -199,6 +210,10 @@ void upgrade(Sqlite& db, Repository& canonical, std::string version) {
             const auto date = ddl.find(", date INTEGER NOT NULL");
             if (date == std::string::npos) throw std::runtime_error("Missing canonical income date");
             ddl.erase(date, std::string(", date INTEGER NOT NULL").size());
+            if (name == "pvl_income") {
+                // This historical schema still has a required actual-income status.
+                ddl.insert(ddl.find(", description TEXT"), ", status INTEGER NOT NULL");
+            }
             db.execute(ddl);
         }
         version = "0.7";
@@ -212,7 +227,17 @@ void upgrade(Sqlite& db, Repository& canonical, std::string version) {
         }
         version = "0.7.1";
     }
-    if (version != "0.7.1") throw std::runtime_error("Unsupported SQLite schema version");
+    if (version == "0.7.1") {
+        for (const auto& trigger : postingTriggers(canonical)) db.execute(trigger["sql"].asString());
+        version = "0.7.2";
+    }
+    if (version == "0.7.2") {
+        if (postingTriggers(db) != postingTriggers(canonical))
+            throw std::runtime_error("Unexpected SQLite balance posting rules");
+        db.execute("ALTER TABLE pvl_income DROP COLUMN status");
+        version = currentSchemaVersion;
+    }
+    if (version != currentSchemaVersion) throw std::runtime_error("Unsupported SQLite schema version");
 }
 }
 
@@ -237,6 +262,12 @@ void prepareDatabase(Repository& store, const fs::path& schema) {
     canonical.script(script);
     const auto triggers = postingTriggers(canonical);
     if (triggers.size() != 4) throw std::runtime_error("Missing balance posting rules in schema");
+    const auto validateCurrent = [&](bool claimed) {
+        validate(db, canonical);
+        if (postingTriggers(db) != triggers) throw std::runtime_error("Unexpected SQLite balance posting rules");
+        if (claimed && !initialized(db))
+            throw std::runtime_error("Instance has settings but no usable administrator");
+    };
     if (tables(db).empty()) {
         Transaction transaction(db);
         if (tables(db).empty()) {
@@ -262,23 +293,29 @@ void prepareDatabase(Repository& store, const fs::path& schema) {
         throw std::runtime_error("Existing users found without instance settings");
     const bool seededV07 = unclaimed && !hasColumn(db, "pvl_income", "date") &&
                            !hasColumn(db, "pvl_income_planned", "date");
-    if (seededV07) validate(db, canonical, true);
     auto version = settings.empty() ? std::string{} : settings[0]["db_version"].asString();
-    if (unclaimed)
-        version = seededV07 ? "0.7" : (postingTriggers(db).empty() ? "0.7.1" : currentSchemaVersion);
+    if (seededV07) version = "0.7";
+    else if (unclaimed)
+        version = hasColumn(db, "pvl_income", "status") ?
+                  (postingTriggers(db).empty() ? "0.7.1" : "0.7.2") : currentSchemaVersion;
     if (version == currentSchemaVersion) {
-        validate(db, canonical);
-        if (postingTriggers(db) != triggers) throw std::runtime_error("Unexpected SQLite balance posting rules");
-        if (!settings.empty() && !initialized(db))
-            throw std::runtime_error("Instance has settings but no usable administrator");
+        validateCurrent(!unclaimed);
         return;
     }
-    if (version != "0.5" && version != "0.6" && version != "0.6.1" && version != "0.7" && version != "0.7.1")
+    if (version != "0.5" && version != "0.6" && version != "0.6.1" && version != "0.7" &&
+        version != "0.7.1" && version != "0.7.2")
         throw std::runtime_error("Unsupported SQLite schema version");
     const auto database = db.query("PRAGMA database_list")[0]["file"].asString();
     db.backup(database + ".pre-" + version + "." + token().substr(0, 12) + ".backup");
     Transaction transaction(db);
-    if (db.query("SELECT db_version FROM pvl_settings LIMIT 2") != settings)
+    const auto lockedSettings = db.query("SELECT db_version FROM pvl_settings LIMIT 2");
+    if ((lockedSettings.size() == 1 && lockedSettings[0]["db_version"] == currentSchemaVersion) ||
+        (lockedSettings.empty() && unclaimed && !hasColumn(db, "pvl_income", "status"))) {
+        validateCurrent(!lockedSettings.empty());
+        transaction.commit();
+        return;
+    }
+    if (lockedSettings != settings)
         throw std::runtime_error("Database version changed during migration");
     if (seededV07) {
         if (!db.query("SELECT id FROM pvl_users LIMIT 1").empty())
@@ -288,8 +325,7 @@ void prepareDatabase(Repository& store, const fs::path& schema) {
         throw std::runtime_error("Existing installation lacks a usable administrator");
     }
     upgrade(db, canonical, version);
-    validate(db, canonical);
-    for (const auto& trigger : triggers) db.execute(trigger["sql"].asString());
+    validateCurrent(!unclaimed);
     db.execute("UPDATE pvl_settings SET db_version=?", {currentSchemaVersion});
     transaction.commit();
 }
@@ -339,7 +375,7 @@ void restoreBackup(const Config& config, const std::string& bytes, bool setup,
     // AUTOINCREMENT high-water marks without firing the posting rules a second time.
     Sqlite db(config.database);
     db.execute("PRAGMA trusted_schema=OFF");
-    db.execute("ATTACH DATABASE ? AS incoming", {file.string()});
+    db.execute("ATTACH DATABASE ? AS incoming", {file.u8string()});
     Transaction transaction(db);
     if (setup && initialized(db)) throw Error(409, "constraint");
     db.execute("PRAGMA defer_foreign_keys=ON");
